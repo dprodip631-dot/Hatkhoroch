@@ -201,7 +201,7 @@ var CATS=[
   {id:'health',n:'স্বাস্থ্য',v:'--c7'},{id:'home',n:'বাসা ও পরিবার',v:'--c9'},{id:'edu',n:'পড়াশোনা',v:'--c10'},
   {id:'loan',n:'কিস্তি',v:'--c11'},{id:'other',n:'অন্যান্য',v:'--c8'}
 ];
-var WAL=[{id:'cash',n:'হাতে নগদ'},{id:'bank',n:'ব্যাংক'},{id:'bkash',n:'বিকাশ/নগদ অ্যাপ'}];
+var WAL=[{id:'bank',n:'বেতন অ্যাকাউন্ট'},{id:'cash',n:'হাতে নগদ'},{id:'bkash',n:'বিকাশ/নগদ অ্যাপ'},{id:'savings',n:'সঞ্চয় অ্যাকাউন্ট'}];
 var SRC=[{id:'salary',n:'বেতন'},{id:'ot',n:'ওভারটাইম'},{id:'bonus',n:'বোনাস'},{id:'adv',n:'অগ্রিম বেতন'},{id:'other',n:'অন্যান্য আয়'}];
 function allCats(){return CATS.concat(S.cats||[]);}
 function catById(id){var a=allCats(),i;for(i=0;i<a.length;i++){if(a[i].id===id)return a[i];}return CATS[CATS.length-1];}
@@ -209,7 +209,7 @@ function walName(id){for(var i=0;i<WAL.length;i++){if(WAL[i].id===id)return WAL[
 function srcName(id){for(var i=0;i<SRC.length;i++){if(SRC[i].id===id)return SRC[i].n;}return SRC[SRC.length-1].n;}
 
 var K2='hatkhoroch-v2',K1='hatkhoroch-v1',storageOk=true;
-function defState(){return {income:[],expenses:[],fixed:[],fixedLog:{},goals:[],savings:[],debts:[],transfers:[],cats:[],quick:[],wallets:{cash:0,bank:0,bkash:0},limits:{daily:0,monthly:0,cats:{}},settings:{pin:'',carry:true,salaryDay:0,cycleDay:1,lastBackup:0,leftDone:'',lastAlert:'',rem:{on:false,time:'21:00',alerts:true}}};}
+function defState(){return {income:[],expenses:[],fixed:[],fixedLog:{},goals:[],savings:[],debts:[],transfers:[],cats:[],quick:[],wallets:{cash:0,bank:0,bkash:0,savings:0},limits:{daily:0,monthly:0,cats:{}},settings:{pin:'',carry:true,salaryDay:0,cycleDay:1,lastBackup:0,leftDone:'',lastAlert:'',rem:{on:false,time:'21:00',alerts:true}}};}
 var S=defState();
 function adopt(o){
   if(!o||typeof o!=='object')return false;
@@ -218,7 +218,7 @@ function adopt(o){
   S.quick=S.quick.filter(function(q){return q&&q.id&&q.amount>0;});
   S.transfers=S.transfers.filter(function(t){return t&&t.from&&t.to&&t.amount>0&&t.date;});
   if(o.fixedLog&&typeof o.fixedLog==='object')S.fixedLog=o.fixedLog;
-  if(o.wallets){['cash','bank','bkash'].forEach(function(w){S.wallets[w]=+o.wallets[w]||0;});}
+  if(o.wallets){['cash','bank','bkash','savings'].forEach(function(w){S.wallets[w]=+o.wallets[w]||0;});}
   if(o.limits){S.limits.daily=+o.limits.daily||0;S.limits.monthly=+o.limits.monthly||0;S.limits.cats=(o.limits.cats&&typeof o.limits.cats==='object')?o.limits.cats:{};}
   if(o.settings){S.settings.pin=String(o.settings.pin||'');S.settings.carry=o.settings.carry!==false;S.settings.salaryDay=+o.settings.salaryDay||0;
     var cd0=+o.settings.cycleDay||1;S.settings.cycleDay=(cd0>=1&&cd0<=28)?cd0:1;S.settings.lastBackup=+o.settings.lastBackup||0;S.settings.leftDone=String(o.settings.leftDone||'');
@@ -233,7 +233,7 @@ try{
 }catch(e){storageOk=false;}
 function save(){try{localStorage.setItem(K2,JSON.stringify(S));}catch(e){storageOk=false;}queueSync();}
 
-var selBig=false, openDay=null, view='home', selCat='tea', selSrc='salary', selDebt='owe', lastWal='cash', confirmClear=false, toastTimer=null, autoMade=0;
+var selBig=false, openDay=null, view='home', selCat='tea', selSrc='salary', selDebt='owe', lastWal='bank', confirmClear=false, toastTimer=null, autoMade=0;
 var mRef=pRef(curPre()), editId=null, editBig=false;
 var alloc={sal:null,daily:'',save:''};
 var TABOF={home:'home',exp:'exp',inc:'inc',report:'report',more:'more',fixed:'more',calendar:'more',goals:'more',debts:'more',wallets:'more',limits:'more',security:'more',cust:'more',remind:'more'};
@@ -275,20 +275,30 @@ function periodLabel(pre){
 }
 function val(id){var el=document.getElementById(id);return el?el.value:'';}
 
+function savingMove(list){
+  return tot(list.filter(function(x){return x.to==='savings'&&x.from!=='savings';}))-
+         tot(list.filter(function(x){return x.from==='savings'&&x.to!=='savings';}));
+}
 function balBefore(pre){
   var lim=pStart(pre);
   function b(l){return tot(l.filter(function(e){return e.date<lim;}));}
-  return b(S.income)-b(S.expenses)-b(S.savings);
+  var tr=S.transfers.filter(function(x){return x.date<lim;});
+  return b(S.income)-b(S.expenses)-b(S.savings.filter(function(x){return (x.wallet||'cash')!=='savings';}))+savingMove(tr);
 }
 function monthFigures(pre){
-  var i=tot(inRange(S.income,pre)),e=tot(inRange(S.expenses,pre)),s=tot(inRange(S.savings,pre)),c=S.settings.carry?balBefore(pre):0;
+  var i=tot(inRange(S.income,pre)),e=tot(inRange(S.expenses,pre));
+  var s=tot(inRange(S.savings,pre).filter(function(x){return (x.wallet||'cash')!=='savings';}))+savingMove(inRange(S.transfers,pre)),c=S.settings.carry?balBefore(pre):0;
   return {inc:i,exp:e,sav:s,carry:c,left:c+i-e-s};
 }
 function walBal(w){
   var b=S.wallets[w]||0;
   S.income.forEach(function(x){if((x.wallet||'cash')===w)b+=x.amount;});
   S.expenses.forEach(function(x){if((x.wallet||'cash')===w)b-=x.amount;});
-  S.savings.forEach(function(x){if((x.wallet||'cash')===w)b-=x.amount;});
+  S.savings.forEach(function(x){
+    var source=x.wallet||'cash';
+    if(source===w&&source!=='savings')b-=x.amount;
+    if(w==='savings'&&source!=='savings')b+=x.amount;
+  });
   S.transfers.forEach(function(x){if(x.from===w)b-=x.amount;if(x.to===w)b+=x.amount;});
   return b;
 }
@@ -532,6 +542,15 @@ function quickHtml(){
     var c=catById(q.cat);
     return '<button type="button" class="chip" data-act="quick" data-id="'+q.id+'"><span class="dot" style="background:var('+c.v+')"></span>'+esc(q.note||c.n)+' '+taka(q.amount)+'</button>';
   }).join('')+'</div><p class="hint">চাপলেই আজকের হিসাবে যোগ হবে। ভুল হলে নিচে "ফিরিয়ে আনুন" আসবে।</p>';
+}
+function transferToSavingsHtml(){
+  var sources=WAL.filter(function(w){return w.id!=='savings';});
+  return '<form class="card" id="saveTransferForm" autocomplete="off"><h2>সঞ্চয় অ্যাকাউন্টে টাকা পাঠান</h2>'+
+    '<p class="hint">এটি খরচ নয়। নির্বাচিত অ্যাকাউন্ট থেকে টাকা কমবে এবং সঞ্চয় অ্যাকাউন্টে যোগ হবে।</p>'+
+    '<div class="field"><label for="stfrom">কোন অ্যাকাউন্ট থেকে</label><select class="txt" id="stfrom">'+sources.map(function(w){return '<option value="'+w.id+'"'+(w.id==='bank'?' selected':'')+'>'+w.n+'</option>';}).join('')+'</select></div>'+
+    '<div class="two"><div class="field"><label for="stamt">কত টাকা (৳)</label><input class="txt" id="stamt" inputmode="decimal" placeholder="০"></div>'+
+    '<div class="field"><label for="stdate">তারিখ</label><input class="txt" type="date" id="stdate" value="'+todayKey()+'"></div></div>'+
+    '<div class="hint" id="stErr" role="alert"></div><button class="primary" type="submit">সঞ্চয়ে পাঠান</button></form>';
 }
 function transferHtml(){
   function sel(id,def){return '<select class="txt" id="'+id+'">'+WAL.map(function(w){return '<option value="'+w.id+'"'+(w.id===def?' selected':'')+'>'+w.n+'</option>';}).join('')+'</select>';}
@@ -883,7 +902,7 @@ function vCal(){
 
 function vGoals(){
   var h=head('সঞ্চয়ের লক্ষ্য',true);
-  h+='<section class="hero"><div><div class="lbl">মোট সঞ্চয়</div><div class="big num">'+taka(tot(S.savings))+'</div></div></section>';
+  h+='<section class="hero"><div><div class="lbl">সঞ্চয় অ্যাকাউন্টের বর্তমান ব্যালেন্স</div><div class="big num">'+taka(walBal('savings'))+'</div><div class="st">লক্ষ্যগুলোর জমা: '+taka(tot(S.savings))+'</div></div></section>';
   h+='<form class="card" id="goalForm" autocomplete="off"><h2>নতুন লক্ষ্য</h2>'+
      '<div class="two"><div class="field"><label for="gname">নাম</label><input class="txt" id="gname" maxlength="40" placeholder="যেমন জরুরি ফান্ড, জমি"></div>'+
      '<div class="field"><label for="gtar">কত টাকা জমাতে চান (৳)</label><input class="txt" id="gtar" inputmode="decimal" placeholder="যেমন ৫০০০০"></div></div>'+
@@ -928,8 +947,9 @@ function vWallets(){
     var b=walBal(w.id);
     return '<li class="row"><div class="rmain"><div class="rtitle">'+w.n+'</div></div><div class="ramt num'+(b<0?' neg':'')+'">'+taka(b)+'</div></li>';
   }).join('')+'</ul><p class="hint">আয় যোগ করলে ব্যালেন্স বাড়ে, খরচ ও সঞ্চয় দিলে কমে।</p></section>';
+  h+=transferToSavingsHtml();
   h+=transferHtml();
-  h+='<form class="card" id="walForm" autocomplete="off"><h2>শুরুর ব্যালেন্স</h2><p class="hint">অ্যাপ ব্যবহার শুরুর সময় কোথায় কত টাকা ছিল, সেটা লিখুন।</p>'+
+  h+='<form class="card" id="walForm" autocomplete="off"><h2>শুরুর ব্যালেন্স</h2><p class="hint">অ্যাপ ব্যবহার শুরুর সময় কোথায় কত টাকা ছিল, সেটা লিখুন। সঞ্চয় অ্যাকাউন্টে এখানে শুধু এমন টাকা লিখুন যা পুরোনো সঞ্চয় জমার রেকর্ডে নেই।</p>'+
      WAL.map(function(w){return '<div class="field"><label for="wo-'+w.id+'">'+w.n+' (৳)</label><input class="txt" id="wo-'+w.id+'" inputmode="decimal" value="'+(S.wallets[w.id]?nfPlain.format(S.wallets[w.id]):'')+'" placeholder="০"></div>';}).join('')+
      '<button class="primary" type="submit">সংরক্ষণ করুন</button><div class="hint" id="walMsg" role="status"></div></form>';
   return h;
@@ -1167,6 +1187,14 @@ document.addEventListener('submit',function(ev){
     if(editBig)ee.big=true;else delete ee.big;
     document.getElementById('editSheet').hidden=true;editId=null;
     save();render(false);showToast('ঠিক করা হয়েছে','ফিরিয়ে আনুন',function(){restoreSnap(snapE);});
+  }
+  else if(id==='saveTransferForm'){
+    var sf=val('stfrom');a=parseAmt(val('stamt'));
+    if(sf==='savings'){fail('stErr','সঞ্চয় অ্যাকাউন্ট থেকে টাকা পাঠাতে সাধারণ “টাকা সরান” ফর্ম ব্যবহার করুন।','stfrom');return;}
+    if(!(a>0)){fail('stErr','সঠিক টাকার অঙ্ক লিখুন।','stamt');return;}
+    dk=val('stdate');if(!validDate(dk))dk=todayKey();
+    S.transfers.push({id:uid(),date:dk,amount:a,from:sf,to:'savings',t:dateToT(dk)});
+    save();render(false);showToast(walName(sf)+' থেকে সঞ্চয়ে '+taka(a)+' পাঠানো হয়েছে');
   }
   else if(id==='trForm'){
     var tf=val('trf'),tt=val('trt');a=parseAmt(val('tramt'));
