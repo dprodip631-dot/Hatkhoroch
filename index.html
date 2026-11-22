@@ -94,6 +94,11 @@ label{font-size:14px;font-weight:600}
 .cat .fill{background:currentColor}
 .pill{font-size:12px;font-weight:600;color:var(--danger);border:1px solid var(--danger);border-radius:999px;padding:1px 8px;white-space:nowrap}
 .pill.ok{color:var(--accent);border-color:var(--accent)}
+.row.dayrow{flex-direction:column;align-items:stretch;gap:0;padding:0}
+.daybtn{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:10px 0;background:none;border:0;text-align:left}
+.daybtn .rmain{display:flex;flex-direction:column}
+.daybtn .chev{color:var(--muted);font-size:13px;width:16px;text-align:center}
+.daysub{display:flex;flex-direction:column;gap:6px;padding:0 0 12px 12px;border-left:3px solid var(--line);margin-left:2px}
 .empty{text-align:center;color:var(--muted);padding:12px 4px;display:flex;flex-direction:column;gap:10px;align-items:center}
 .note{background:var(--hero);border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px}
 .mnav{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -220,7 +225,7 @@ try{
 }catch(e){storageOk=false;}
 function save(){try{localStorage.setItem(K2,JSON.stringify(S));}catch(e){storageOk=false;}}
 
-var view='home', selCat='tea', selSrc='salary', selDebt='owe', lastWal='cash', confirmClear=false, toastTimer=null, autoMade=0;
+var openDay=null, view='home', selCat='tea', selSrc='salary', selDebt='owe', lastWal='cash', confirmClear=false, toastTimer=null, autoMade=0;
 var now0=new Date(), mRef={y:now0.getFullYear(),m:now0.getMonth()};
 var alloc={sal:null,daily:'',save:''};
 var TABOF={home:'home',exp:'exp',inc:'inc',report:'report',more:'more',fixed:'more',calendar:'more',goals:'more',debts:'more',wallets:'more',limits:'more',security:'more'};
@@ -547,9 +552,13 @@ function vReport(){
   h+='<section class="card"><h2>গত ছয় মাস</h2>'+chart6()+'</section>';
   if(exps.length){
     h+='<section class="card"><h2>খাত অনুযায়ী খরচ</h2><div>'+catBreakdown(exps,total)+'</div></section>';
-    h+='<section class="card"><h2>দিন অনুযায়ী খরচ</h2><ul class="list">'+dk.map(function(k){
-      var over=S.limits.daily&&days[k]>S.limits.daily;
-      return '<li class="row"><div class="rmain"><div class="rtitle">'+fmtDate(dateOf(k),{weekday:'short',day:'numeric',month:'short'})+'</div></div>'+(over?'<span class="pill">লিমিট ছাড়িয়েছে</span>':'')+'<div class="ramt num">'+taka(days[k])+'</div></li>';
+    h+='<section class="card"><h2>দিন অনুযায়ী খরচ</h2><p class="hint">কোনো তারিখে চাপলে সেদিনের খরচের তালিকা নিচে খুলবে।</p><ul class="list">'+dk.map(function(k){
+      var over=S.limits.daily&&days[k]>S.limits.daily,open=(openDay===k),sub='';
+      if(open){
+        var items=exps.filter(function(e){return e.date===k;}).sort(function(a,b){return a.t-b.t;});
+        sub='<div class="daysub"><div>'+catBreakdown(items,days[k])+'</div><ul class="list">'+items.map(entryRow).join('')+'</ul></div>';
+      }
+      return '<li class="row dayrow"><button type="button" class="daybtn" data-day="'+k+'" aria-expanded="'+open+'"><span class="rmain"><span class="rtitle">'+fmtDate(dateOf(k),{weekday:'short',day:'numeric',month:'short'})+'</span><span class="rsub">'+nf.format(exps.filter(function(e){return e.date===k;}).length)+'টি খরচ</span></span>'+(over?'<span class="pill">লিমিট ছাড়িয়েছে</span>':'')+'<span class="ramt num">'+taka(days[k])+'</span><span class="chev" aria-hidden="true">'+(open?'▴':'▾')+'</span></button>'+sub+'</li>';
     }).join('')+'</ul></section>';
   }else{
     h+='<section class="card"><div class="empty"><p>এই মাসে কোনো খরচ নেই।</p></div></section>';
@@ -762,13 +771,14 @@ function clearSample(){['income','expenses','fixed','goals','savings','debts'].f
 function exportObj(){var o=JSON.parse(JSON.stringify(S));o.settings.pin='';return {app:'hatkhoroch',version:2,data:o};}
 
 document.addEventListener('click',function(ev){
-  var el=ev.target.closest('[data-view],[data-cat],[data-src],[data-dk],[data-act],[data-m]');
+  var el=ev.target.closest('[data-view],[data-cat],[data-src],[data-dk],[data-act],[data-m],[data-day]');
   if(!el)return;
-  if(el.hasAttribute('data-view')){view=el.getAttribute('data-view');confirmClear=false;render(true);return;}
+  if(el.hasAttribute('data-day')){var dd=el.getAttribute('data-day');openDay=(openDay===dd)?null:dd;render(false);return;}
+  if(el.hasAttribute('data-view')){view=el.getAttribute('data-view');confirmClear=false;openDay=null;render(true);return;}
   if(el.hasAttribute('data-cat')){selCat=el.getAttribute('data-cat');document.querySelectorAll('[data-cat]').forEach(function(c){c.setAttribute('aria-pressed',c.getAttribute('data-cat')===selCat);});return;}
   if(el.hasAttribute('data-src')){selSrc=el.getAttribute('data-src');document.querySelectorAll('[data-src]').forEach(function(c){c.setAttribute('aria-pressed',c.getAttribute('data-src')===selSrc);});return;}
   if(el.hasAttribute('data-dk')){selDebt=el.getAttribute('data-dk');document.querySelectorAll('[data-dk]').forEach(function(c){c.setAttribute('aria-pressed',c.getAttribute('data-dk')===selDebt);});return;}
-  if(el.hasAttribute('data-m')){var nd=new Date(mRef.y,mRef.m+(+el.getAttribute('data-m')),1);mRef={y:nd.getFullYear(),m:nd.getMonth()};render(false);return;}
+  if(el.hasAttribute('data-m')){var nd=new Date(mRef.y,mRef.m+(+el.getAttribute('data-m')),1);mRef={y:nd.getFullYear(),m:nd.getMonth()};openDay=null;render(false);return;}
   var act=el.getAttribute('data-act'),id=el.getAttribute('data-id');
   if(act==='del'){
     var k=el.getAttribute('data-k'),arr=S[k],idx=-1,i;
