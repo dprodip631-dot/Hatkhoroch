@@ -209,7 +209,7 @@ function walName(id){for(var i=0;i<WAL.length;i++){if(WAL[i].id===id)return WAL[
 function srcName(id){for(var i=0;i<SRC.length;i++){if(SRC[i].id===id)return SRC[i].n;}return SRC[SRC.length-1].n;}
 
 var K2='hatkhoroch-v2',K1='hatkhoroch-v1',storageOk=true;
-function defState(){return {income:[],expenses:[],fixed:[],fixedLog:{},goals:[],savings:[],debts:[],transfers:[],cats:[],quick:[],wallets:{cash:0,bank:0,bkash:0},limits:{daily:0,monthly:0,cats:{}},settings:{pin:'',carry:true,salaryDay:0,cycleDay:1,lastBackup:0,leftDone:''}};}
+function defState(){return {income:[],expenses:[],fixed:[],fixedLog:{},goals:[],savings:[],debts:[],transfers:[],cats:[],quick:[],wallets:{cash:0,bank:0,bkash:0},limits:{daily:0,monthly:0,cats:{}},settings:{pin:'',carry:true,salaryDay:0,cycleDay:1,lastBackup:0,leftDone:'',lastAlert:'',rem:{on:false,time:'21:00',alerts:true}}};}
 var S=defState();
 function adopt(o){
   if(!o||typeof o!=='object')return false;
@@ -221,7 +221,8 @@ function adopt(o){
   if(o.wallets){['cash','bank','bkash'].forEach(function(w){S.wallets[w]=+o.wallets[w]||0;});}
   if(o.limits){S.limits.daily=+o.limits.daily||0;S.limits.monthly=+o.limits.monthly||0;S.limits.cats=(o.limits.cats&&typeof o.limits.cats==='object')?o.limits.cats:{};}
   if(o.settings){S.settings.pin=String(o.settings.pin||'');S.settings.carry=o.settings.carry!==false;S.settings.salaryDay=+o.settings.salaryDay||0;
-    var cd0=+o.settings.cycleDay||1;S.settings.cycleDay=(cd0>=1&&cd0<=28)?cd0:1;S.settings.lastBackup=+o.settings.lastBackup||0;S.settings.leftDone=String(o.settings.leftDone||'');}
+    var cd0=+o.settings.cycleDay||1;S.settings.cycleDay=(cd0>=1&&cd0<=28)?cd0:1;S.settings.lastBackup=+o.settings.lastBackup||0;S.settings.leftDone=String(o.settings.leftDone||'');
+    var r0=o.settings.rem||{};S.settings.rem={on:!!r0.on,time:/^\d\d:\d\d$/.test(r0.time||'')?r0.time:'21:00',alerts:r0.alerts!==false};S.settings.lastAlert=String(o.settings.lastAlert||'');}
   return true;
 }
 try{
@@ -230,12 +231,12 @@ try{
   if(raw){adopt(JSON.parse(raw));}
   else{var raw1=localStorage.getItem(K1);if(raw1)adopt(JSON.parse(raw1));}
 }catch(e){storageOk=false;}
-function save(){try{localStorage.setItem(K2,JSON.stringify(S));}catch(e){storageOk=false;}}
+function save(){try{localStorage.setItem(K2,JSON.stringify(S));}catch(e){storageOk=false;}queueSync();}
 
 var selBig=false, openDay=null, view='home', selCat='tea', selSrc='salary', selDebt='owe', lastWal='cash', confirmClear=false, toastTimer=null, autoMade=0;
 var mRef=pRef(curPre()), editId=null, editBig=false;
 var alloc={sal:null,daily:'',save:''};
-var TABOF={home:'home',exp:'exp',inc:'inc',report:'report',more:'more',fixed:'more',calendar:'more',goals:'more',debts:'more',wallets:'more',limits:'more',security:'more',cust:'more'};
+var TABOF={home:'home',exp:'exp',inc:'inc',report:'report',more:'more',fixed:'more',calendar:'more',goals:'more',debts:'more',wallets:'more',limits:'more',security:'more',cust:'more',remind:'more'};
 
 var BN='০১২৩৪৫৬৭৮৯';
 function toEn(s){return String(s).replace(/[০-৯]/g,function(d){return BN.indexOf(d);}).replace(/[,،৳\s]/g,'').replace('।','.');}
@@ -424,6 +425,88 @@ function recentRows(n){
 }
 function delBtn(k,id,label){return '<button class="x" data-act="del" data-k="'+k+'" data-id="'+id+'" aria-label="'+esc(label)+' মুছুন">মুছুন</button>';}
 
+/* ---------- phone features (work only inside the installed app) ---------- */
+var CAPA=window.Capacitor,syncT=null;
+function isNative(){try{return !!(CAPA&&CAPA.isNativePlatform&&CAPA.isNativePlatform());}catch(e){return false;}}
+function plug(n){try{return (CAPA.Plugins&&CAPA.Plugins[n])||CAPA.registerPlugin(n);}catch(e){return null;}}
+function shareFile(name,text,title,done){
+  var FS=plug('Filesystem'),SH=plug('Share');
+  if(!FS||!SH){done(false);return;}
+  FS.writeFile({path:name,data:text,directory:'CACHE',encoding:'utf8'}).then(function(r){
+    return SH.share({title:title,dialogTitle:title,url:r.uri});
+  }).then(function(){done(true);},function(err){
+    var m=String((err&&err.message)||err||'');
+    done(/cancel/i.test(m)?null:false);
+  });
+}
+function shareText(text,title,done){
+  var SH=plug('Share');
+  if(!SH){done(false);return;}
+  SH.share({title:title,text:text,dialogTitle:title}).then(function(){done(true);},function(err){
+    var m=String((err&&err.message)||err||'');
+    done(/cancel/i.test(m)?null:false);
+  });
+}
+function lnReady(cb){
+  var LN=plug('LocalNotifications');if(!LN)return;
+  LN.checkPermissions().then(function(p){cb(LN,p.display==='granted');},function(){});
+}
+function occurs(day,n){
+  var out=[],t0=dateOf(todayKey()),k=0;
+  while(out.length<n&&k<6){
+    var y=t0.getFullYear(),m=t0.getMonth()+k,dim=new Date(y,m+1,0).getDate(),d=new Date(y,m,Math.min(day,dim));
+    if(d>=t0)out.push(d);
+    k++;
+  }
+  return out;
+}
+function syncReminders(){
+  var LN=plug('LocalNotifications');if(!LN)return;
+  var rem=S.settings.rem;
+  LN.getPending().then(function(r){
+    var ids=(r.notifications||[]).map(function(x){return {id:x.id};});
+    return ids.length?LN.cancel({notifications:ids}):null;
+  }).then(function(){
+    if(!rem.on)return null;
+    var list=[],hm=rem.time.split(':'),nowT=Date.now(),idn=100;
+    list.push({id:1,title:'হাতখরচ',body:'আজকের খরচ লিখেছেন তো?',schedule:{on:{hour:+hm[0],minute:+hm[1]},allowWhileIdle:true}});
+    function add(at,title,body){if(at.getTime()>nowT+60000&&list.length<60)list.push({id:idn++,title:title,body:body,schedule:{at:at,allowWhileIdle:true}});}
+    S.fixed.forEach(function(f){
+      if(!f.active)return;
+      occurs(f.day,2).forEach(function(d){
+        add(new Date(d.getFullYear(),d.getMonth(),d.getDate()-1,9,0),'আগামীকাল '+f.name,taka(f.amount)+' নির্ধারিত খরচের দিন কাল');
+        add(new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0),'আজ '+f.name,taka(f.amount)+' আজ হিসাবে যোগ হবে');
+      });
+    });
+    if(S.settings.salaryDay)occurs(S.settings.salaryDay,2).forEach(function(d){add(new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0),'বেতনের দিন','আজ বেতন পাওয়ার কথা। আয়ে যোগ করুন।');});
+    return LN.schedule({notifications:list});
+  }).catch(function(){});
+}
+function queueSync(){
+  if(!isNative()||!S.settings.rem||!S.settings.rem.on)return;
+  clearTimeout(syncT);syncT=setTimeout(syncReminders,1500);
+}
+function maybeAlert(m){
+  if(!isNative()||!S.settings.rem.alerts||!/ছাড়িয়ে|কাছে/.test(m))return;
+  var key=todayKey()+'|'+m;
+  if(S.settings.lastAlert===key)return;
+  S.settings.lastAlert=key;save();
+  lnReady(function(LN,ok){
+    if(ok)LN.schedule({notifications:[{id:1000+Math.floor(Math.random()*1000000000),title:'হাতখরচ সতর্কতা',body:m,schedule:{at:new Date(Date.now()+700)}}]}).catch(function(){});
+  });
+}
+function limitToast(dk,cat,big){var m=limitMsg(dk,cat,big);maybeAlert(m);return m;}
+function vRemind(){
+  var r=S.settings.rem,h=head('রিমাইন্ডার',true);
+  if(!isNative())h+='<div class="note"><span>রিমাইন্ডার শুধু ফোনে ইনস্টল করা অ্যাপে চলে। ব্রাউজারে এটা কাজ করবে না।</span></div>';
+  h+='<section class="card"><h2>মনে করানো</h2><button class="chip" data-act="rem-toggle" aria-pressed="'+r.on+'">রিমাইন্ডার চালু</button>'+
+    '<p class="hint">চালু থাকলে প্রতিদিন নিচের সময়ে "আজকের খরচ লিখেছেন তো?" আসবে। নির্ধারিত খরচের আগের দিন ও দিনে, আর বেতনের তারিখেও সকাল ৯টায় জানাবে।</p>'+
+    '<form id="remForm" class="inl" autocomplete="off"><input class="txt" type="time" id="rtime" value="'+r.time+'" aria-label="রিমাইন্ডারের সময়"><button class="primary small" type="submit">সময় সংরক্ষণ</button></form>'+
+    '<div class="hint" id="remMsg" role="status"></div></section>';
+  h+='<section class="card"><h2>লিমিটের সতর্কতা</h2><button class="chip" data-act="rem-alerts" aria-pressed="'+r.alerts+'">সীমার কাছে গেলে নোটিফিকেশন</button><p class="hint">আজকের সীমার ৮০% বা লিমিট পার হলে একবার জানাবে।</p></section>';
+  h+='<section class="card"><h2>পরীক্ষা</h2><button class="ghost" data-act="rem-test">৫ সেকেন্ড পরে একটা পরীক্ষামূলক নোটিফিকেশন পাঠান</button><p class="hint">না এলে ফোনের সেটিংস → অ্যাপ → হাতখরচ → নোটিফিকেশন চালু আছে কি না দেখুন।</p></section>';
+  return h;
+}
 function reassignCat(id){
   S.expenses.forEach(function(e){if(e.cat===id)e.cat='other';});
   S.fixed.forEach(function(e){if(e.cat===id)e.cat='other';});
@@ -702,7 +785,7 @@ function vReport(){
   }
   h+=leftoverCard(pre,f);
   h+=salaryHistory();
-  h+='<section class="card"><h2>রিপোর্ট নিয়ে যান</h2><p class="hint">এই অ্যাপ থেকে সরাসরি ফাইল ডাউনলোড হয় না। কপি করে নোট, হোয়াটসঅ্যাপ বা এক্সেলে পেস্ট করুন।</p>'+
+  h+='<section class="card"><h2>রিপোর্ট নিয়ে যান</h2><p class="hint">'+(isNative()?'রিপোর্ট হোয়াটসঅ্যাপ বা ইমেইলে পাঠান, অথবা এক্সেলে খোলার ফাইল (CSV) বানান।':'কপি করে নোট, হোয়াটসঅ্যাপ বা এক্সেলে পেস্ট করুন।')+'</p>'+(isNative()?'<div class="inl"><button class="primary small" data-act="share-report" style="flex:1">রিপোর্ট পাঠান</button><button class="ghost small" data-act="share-csv" style="flex:1">এক্সেল ফাইল পাঠান</button></div>':'')+
      '<div class="inl"><button class="ghost small" data-act="copy-report" style="flex:1">লেখা কপি করুন</button><button class="ghost small" data-act="copy-csv" style="flex:1">এক্সেলের জন্য কপি</button></div></section>';
   return h;
 }
@@ -716,6 +799,7 @@ function vMore(){
     mi('debts','ধার ও ঋণ','কার কাছে কত দেবেন বা পাবেন')+
     mi('wallets','ওয়ালেট','নগদ, ব্যাংক, বিকাশের ব্যালেন্স')+
     mi('limits','খরচের লিমিট','দৈনিক, মাসিক ও খাত অনুযায়ী')+
+    mi('remind','রিমাইন্ডার','রাতে খরচ লেখার কথা, বিলের দিন, সীমার সতর্কতা')+
     mi('cust','খাত ও দ্রুত খরচ','নিজের খাত বানান, চা ২০ এক চাপে')+
     mi('security','ব্যাকআপ ও নিরাপত্তা','পিন লক, ফোন বদলালে ফিরিয়ে আনা')+
     '</div></section>';
@@ -848,16 +932,16 @@ function vSec(){
      (S.settings.pin?'<p class="st pos">পিন চালু আছে।</p>':'')+
      '<div class="inl"><input class="txt" id="pinNew" type="password" inputmode="numeric" maxlength="6" placeholder="৪ থেকে ৬ সংখ্যার নতুন পিন" aria-label="নতুন পিন"><button class="primary small" type="submit">সেট করুন</button></div>'+
      '<div class="hint" id="pinMsg" role="alert"></div>'+(S.settings.pin?'<button type="button" class="ghost danger-btn" data-act="pin-remove">পিন বন্ধ করুন</button>':'')+'</form>';
-  h+='<section class="card"><h2>ব্যাকআপ</h2><p class="hint">তথ্য শুধু এই ফোনের ব্রাউজারে থাকে। ফোন বদলাতে হলে ব্যাকআপ কপি করে নিজের কাছে (নোট বা হোয়াটসঅ্যাপে) রাখুন, নতুন ফোনে পেস্ট করে ফিরিয়ে আনুন।</p>'+
-     (S.settings.lastBackup?'<p class="st">সর্বশেষ ব্যাকআপ: '+fmtDate(new Date(S.settings.lastBackup),{day:'numeric',month:'long'})+'</p>':'<p class="st neg">এখনো ব্যাকআপ নেওয়া হয়নি।</p>')+'<button class="ghost" data-act="backup-copy">ব্যাকআপ কপি করুন</button></section>';
-  h+='<form class="card" id="restoreForm"><h2>ব্যাকআপ থেকে ফিরিয়ে আনুন</h2><textarea class="ta" id="rtext" placeholder="কপি করা ব্যাকআপ এখানে পেস্ট করুন" aria-label="ব্যাকআপ"></textarea>'+
+  h+='<section class="card"><h2>ব্যাকআপ</h2><p class="hint">তথ্য শুধু এই ফোনেই থাকে। ফোন হারালে বা অ্যাপ মুছলে হিসাব চলে যায়, তাই মাঝে মাঝে ব্যাকআপ ফাইল নিজের কাছে (হোয়াটসঅ্যাপ, ইমেইল বা ড্রাইভে) রেখে দিন।</p>'+
+     (S.settings.lastBackup?'<p class="st">সর্বশেষ ব্যাকআপ: '+fmtDate(new Date(S.settings.lastBackup),{day:'numeric',month:'long'})+'</p>':'<p class="st neg">এখনো ব্যাকআপ নেওয়া হয়নি।</p>')+(isNative()?'<button class="primary" data-act="backup-share">ব্যাকআপ ফাইল পাঠান</button>':'')+'<button class="ghost" data-act="backup-copy">ব্যাকআপ কপি করুন (লেখা হিসেবে)</button></section>';
+  h+='<form class="card" id="restoreForm"><h2>ব্যাকআপ থেকে ফিরিয়ে আনুন</h2><label for="rfile">ব্যাকআপ ফাইল বেছে নিন</label><input class="txt" type="file" id="rfile" accept=".json,application/json,text/plain"><p class="hint">অথবা কপি করা লেখা এখানে পেস্ট করুন:</p><textarea class="ta" id="rtext" placeholder="কপি করা ব্যাকআপ এখানে পেস্ট করুন" aria-label="ব্যাকআপ"></textarea>'+
      '<div class="hint" id="restoreMsg" role="alert"></div><button class="ghost" type="submit">ফিরিয়ে আনুন</button></form>';
   h+='<section class="card"><h2>তথ্য মুছুন</h2><p class="hint">'+(storageOk?'সব আয়, খরচ ও সেটিং মুছে যাবে। আগে ব্যাকআপ নিয়ে রাখুন।':'এই ব্রাউজারে তথ্য জমা রাখা যাচ্ছে না, পাতা বন্ধ করলে হিসাব মুছে যাবে।')+'</p>'+
      '<button class="ghost danger-btn" data-act="clear-all">'+(confirmClear?'নিশ্চিত? আবার চাপলে সব মুছে যাবে':'সব তথ্য মুছে ফেলুন')+'</button></section>';
   return h;
 }
 
-var VIEWS={home:vHome,exp:vExp,inc:vInc,report:vReport,more:vMore,fixed:vFixed,calendar:vCal,goals:vGoals,debts:vDebts,wallets:vWallets,limits:vLimits,security:vSec,cust:vCust};
+var VIEWS={home:vHome,exp:vExp,inc:vInc,report:vReport,more:vMore,fixed:vFixed,calendar:vCal,goals:vGoals,debts:vDebts,wallets:vWallets,limits:vLimits,security:vSec,cust:vCust,remind:vRemind};
 var app=document.getElementById('app');
 function render(scroll){
   runFixed();
@@ -949,7 +1033,7 @@ document.addEventListener('click',function(ev){
       var snapQ=snapshot(),dkq=todayKey();
       S.expenses.push({id:uid(),date:dkq,amount:qi.amount,cat:qi.cat,note:qi.note||'',t:Date.now(),wallet:lastWal});
       save();render(false);
-      showToast(limitMsg(dkq,qi.cat,false),'ফিরিয়ে আনুন',function(){restoreSnap(snapQ);});
+      showToast(limitToast(dkq,qi.cat,false),'ফিরিয়ে আনুন',function(){restoreSnap(snapQ);});
     }
   }
   else if(act==='quick-save'){
@@ -960,6 +1044,36 @@ document.addEventListener('click',function(ev){
     if(S.quick.length>=12){showToast('দ্রুত তালিকায় সর্বোচ্চ ১২টা রাখা যায়। খাত ও দ্রুত খরচ পাতা থেকে মুছে নিন।');return;}
     S.quick.push({id:uid(),amount:qa,cat:selCat,note:qn});save();
     document.getElementById('quickBox').innerHTML=quickHtml();showToast('দ্রুত তালিকায় রাখা হয়েছে');
+  }
+  else if(act==='share-report'){var rt=reportText();shareText(rt,'হাতখরচ রিপোর্ট',function(ok){if(ok===false)copyText(rt,'রিপোর্ট কপি হয়েছে','রিপোর্ট');});}
+  else if(act==='share-csv'){
+    var pre0=monthKey(mRef.y,mRef.m),ct=csvText();
+    shareFile('hatkhoroch-'+pre0+'.csv','\uFEFF'+ct,'হাতখরচ CSV',function(ok){if(ok===false)copyText(ct,'কপি হয়েছে, এক্সেলে পেস্ট করুন','এক্সেলের জন্য');});
+  }
+  else if(act==='backup-share'){
+    var bt2=JSON.stringify(exportObj());
+    shareFile('hatkhoroch-backup-'+todayKey()+'.json',bt2,'হাতখরচ ব্যাকআপ',function(ok){
+      if(ok===true){S.settings.lastBackup=Date.now();save();render(false);showToast('ব্যাকআপ ফাইল তৈরি হয়েছে');}
+      else if(ok===false){copyText(bt2,'ব্যাকআপ কপি হয়েছে','ব্যাকআপ');}
+    });
+  }
+  else if(act==='rem-toggle'){
+    if(!isNative()){showToast('রিমাইন্ডার শুধু ইনস্টল করা অ্যাপে চলে');return;}
+    if(S.settings.rem.on){S.settings.rem.on=false;save();render(false);syncReminders();showToast('রিমাইন্ডার বন্ধ হয়েছে');return;}
+    var LN0=plug('LocalNotifications');
+    LN0.requestPermissions().then(function(p){
+      if(p.display==='granted'){S.settings.rem.on=true;save();render(false);syncReminders();showToast('রিমাইন্ডার চালু হয়েছে');}
+      else showToast('নোটিফিকেশনের অনুমতি দেওয়া হয়নি। ফোনের সেটিংস থেকে অনুমতি দিন।');
+    },function(){showToast('অনুমতি চাওয়া যায়নি');});
+  }
+  else if(act==='rem-alerts'){S.settings.rem.alerts=!S.settings.rem.alerts;save();render(false);}
+  else if(act==='rem-test'){
+    if(!isNative()){showToast('শুধু ইনস্টল করা অ্যাপে চলে');return;}
+    var LN1=plug('LocalNotifications');
+    LN1.requestPermissions().then(function(p){
+      if(p.display!=='granted'){showToast('নোটিফিকেশনের অনুমতি নেই');return;}
+      return LN1.schedule({notifications:[{id:3,title:'হাতখরচ',body:'রিমাইন্ডার ঠিকমতো কাজ করছে।',schedule:{at:new Date(Date.now()+5000)}}]}).then(function(){showToast('৫ সেকেন্ডের মধ্যে আসবে');});
+    }).catch(function(){showToast('সমস্যা হয়েছে');});
   }
   else if(act==='left-go'){mRef=pRef(id);view='report';openDay=null;render(true);}
   else if(act==='fx-toggle'){S.fixed.forEach(function(f){if(f.id===id){f.active=!f.active;if(f.active){var n=new Date(),p=f.start.split('-');var cur=monthKey(n.getFullYear(),n.getMonth());if(f.start<cur)f.start=cur;}}});save();render(false);}
@@ -1010,8 +1124,13 @@ document.addEventListener('submit',function(ev){
     if(selBig)ex.big=true;
     S.expenses.push(ex);
     var wasBig=selBig;selBig=false;
-    save();render(false);showToast(limitMsg(dk,selCat,wasBig));
+    save();render(false);showToast(limitToast(dk,selCat,wasBig));
     var n1=document.getElementById('amt');if(n1)n1.focus();
+  }
+  else if(id==='remForm'){
+    var tv=val('rtime'),rm=document.getElementById('remMsg');
+    if(/^\d\d:\d\d$/.test(tv)){S.settings.rem.time=tv;save();if(S.settings.rem.on)syncReminders();rm.textContent='সময় সংরক্ষণ হয়েছে।';rm.style.color='var(--accent)';}
+    else{rm.textContent='সময় বেছে নিন।';rm.style.color='var(--danger)';}
   }
   else if(id==='editForm'){
     a=parseAmt(val('eamt'));
@@ -1141,6 +1260,17 @@ document.addEventListener('submit',function(ev){
   }
 });
 
+document.addEventListener('change',function(ev){
+  var t=ev.target;
+  if(t&&t.id==='rfile'&&t.files&&t.files[0]){
+    var rd=new FileReader();
+    rd.onload=function(){
+      var tx=document.getElementById('rtext');if(tx)tx.value=String(rd.result||'');
+      var m=document.getElementById('restoreMsg');if(m){m.textContent='ফাইল পড়া হয়েছে। নিচে "ফিরিয়ে আনুন" চাপুন।';m.style.color='var(--accent)';}
+    };
+    rd.readAsText(t.files[0]);
+  }
+});
 function hashPin(p){var h=5381,s=String(p)+'|hk';for(var i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0;}return String(h);}
 var hiddenAt=0;
 function lockNow(){
@@ -1155,6 +1285,7 @@ document.addEventListener('visibilitychange',function(){
 
 render(false);
 lockNow();
+if(isNative()&&S.settings.rem.on)syncReminders();
 })();
 </script>
 </body>
