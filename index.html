@@ -597,6 +597,28 @@ function vCust(){
 }
 
 /* ---------- views ---------- */
+function financialAdvisor(){
+  var pre=curPre(),f=monthFigures(pre),inc=f.inc,spent=f.exp,saved=f.sav;
+  var start=dateOf(pStart(pre)),end=dateOf(pEnd(pre)),now=dateOf(todayKey());
+  var totalDays=periodDays(pre),elapsed=Math.max(1,Math.min(totalDays,Math.floor((now-start)/86400000)+1));
+  var leftDays=Math.max(1,totalDays-elapsed+1),avg=spent/elapsed,forecast=Math.round(avg*totalDays);
+  var budget=+S.limits.monthly||Math.max(0,f.carry+inc),remain=budget-spent;
+  var daily=Math.max(0,Math.floor(remain/leftDays));
+  var savingRate=inc>0?saved/inc:0,advice='',status='';
+  if(inc<=0){status='আয় যোগ করা হয়নি';advice='প্রথমে এই মাসের বেতন বা আয় যোগ করুন। এরপর বাজেট ও সঞ্চয়ের পরামর্শ আরও নির্ভুল হবে.';}
+  else if(remain<0){status='বাজেট অতিক্রম';advice='এই মাসে বাজেট '+taka(-remain)+' ছাড়িয়েছেন। অপ্রয়োজনীয় খরচ বন্ধ করে নির্ধারিত বিল ও জরুরি খরচকে অগ্রাধিকার দিন.';}
+  else if(forecast>budget){status='খরচের গতি বেশি';advice='বর্তমান খরচের গতি থাকলে মাস শেষে প্রায় '+taka(forecast-budget)+' বাজেট ছাড়াতে পারেন। আগামী কয়েক দিন দৈনিক খরচ কমান.';}
+  else if(savingRate<0.1){status='সঞ্চয় বাড়ানোর সুযোগ';advice='এখন পর্যন্ত আয়ের ১০%-এর কম সঞ্চয় হয়েছে। সম্ভব হলে ছোট একটি নির্দিষ্ট অঙ্ক সঞ্চয়ে সরিয়ে রাখুন.';}
+  else{status='বাজেটের মধ্যে';advice='আপনি আপাতত বাজেটের মধ্যে আছেন। দৈনিক খরচ প্রায় '+taka(daily)+'-এর মধ্যে রাখলে পরিকল্পনা ধরে রাখা সহজ হবে.';}
+  var h='<section class="card"><div class="mhead"><h2>আমার আর্থিক পরামর্শ</h2><span class="pill '+(remain>=0?'ok':'')+'">'+status+'</span></div>';
+  h+='<p class="hint">আপনার এই মাসের আয়, খরচ, সঞ্চয় ও বাজেটের হিসাব থেকে পরামর্শ তৈরি হয়েছে।</p>';
+  h+='<div class="stats"><div class="stat"><span class="k">এখন পর্যন্ত খরচ</span><b class="num">'+taka(spent)+'</b></div><div class="stat"><span class="k">বাজেট বাকি</span><b class="num '+(remain<0?'neg':'pos')+'">'+taka(remain)+'</b></div><div class="stat"><span class="k">দৈনিক প্রস্তাবিত</span><b class="num">'+taka(daily)+'</b></div></div>';
+  h+='<div class="note"><span>'+esc(advice)+'</span></div>';
+  if(inc>0)h+='<div class="meter"><div class="mhead"><span class="t">মাস শেষে সম্ভাব্য খরচ</span><b class="num">'+taka(forecast)+'</b></div>'+meter('বাজেটের ব্যবহার (পূর্বাভাস)',forecast,budget)+'</div>';
+  h+='<div class="inl"><button class="ghost small" data-view="inc" style="flex:1">বেতন বরাদ্দ</button><button class="ghost small" data-view="limits" style="flex:1">বাজেট ঠিক করুন</button></div></section>';
+  return h;
+}
+
 function vHome(){
   var tk=todayKey(),pre=curPre(),f=monthFigures(pre),avail=f.carry+f.inc,dayT=tot(ofDay(tk));
   var h='<header><p class="app">হাতখরচ</p><h1>'+fmtDate(new Date(),{weekday:'long',day:'numeric',month:'long'})+'</h1></header>';
@@ -610,6 +632,7 @@ function vHome(){
   h+=dailyMeter(tk)+meter('এই মাসের লিমিট',tot(limitList(inRange(S.expenses,pre))),S.limits.monthly)+'</section>';
   h+='<div class="tiles">'+tile('inc',ICON.plus,'আয় যোগ','বেতন ও অন্যান্য আয়','in')+tile('exp',ICON.minus,'খরচ যোগ','দৈনন্দিন খরচ','out')+
      tile('fixed',ICON.cal,'নির্ধারিত খরচ','মাসিক বিল ও কিস্তি','fx')+tile('report',ICON.pie,'রিপোর্ট','মাসিক আয়-ব্যয়','rp')+'</div>';
+  h+=financialAdvisor();
   var up=upcoming(5);
   if(up.length){
     h+='<section class="card"><h2>শিগগির যা আছে</h2><ul class="list">'+up.map(function(u){
