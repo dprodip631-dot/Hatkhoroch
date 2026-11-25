@@ -1,1 +1,70 @@
+name: Build Android APK
 
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Create Capacitor project
+        run: |
+          mkdir www
+          cp index.html www/index.html
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/share@6 @capacitor/filesystem@6 @capacitor/local-notifications@6
+          npx cap init Hatkhoroch com.prodip.hatkhoroch --web-dir www
+          npx cap add android
+          npx cap sync android
+
+      - name: Allow notifications on Android 13+
+        run: |
+          python3 - <<'PY'
+          p='android/app/src/main/AndroidManifest.xml'
+          s=open(p,encoding='utf-8').read()
+          if 'POST_NOTIFICATIONS' not in s:
+              s=s.replace('</manifest>','    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>')
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: Set Bengali app name
+        run: |
+          python3 - <<'PY'
+          import re
+          p='android/app/src/main/res/values/strings.xml'
+          s=open(p,encoding='utf-8').read()
+          s=re.sub(r'(<string name="app_name">)[^<]*(</string>)',r'\1হাতখরচ\2',s)
+          s=re.sub(r'(<string name="title_activity_main">)[^<]*(</string>)',r'\1হাতখরচ\2',s)
+          open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: Use fixed signing key (so every update installs over the old app)
+        env:
+          HK_KEYSTORE: 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
+        run: |
+          mkdir -p ~/.android
+          echo "$HK_KEYSTORE" | base64 -d > ~/.android/debug.keystore
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hatkhoroch-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
