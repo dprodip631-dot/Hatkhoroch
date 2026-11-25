@@ -26,6 +26,13 @@ jobs:
           cp index.html www/index.html
           npm init -y
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/share@6 @capacitor/filesystem@6 @capacitor/local-notifications@6
+
+      - name: Fingerprint plugin (optional, skipped if it cannot be installed)
+        run: |
+          npm install @capgo/capacitor-native-biometric@6 || echo "fingerprint plugin skipped"
+
+      - name: Add Android project
+        run: |
           npx cap init Hatkhoroch com.prodip.hatkhoroch --web-dir www
           npx cap add android
           npx cap sync android
@@ -35,8 +42,9 @@ jobs:
           python3 - <<'PY'
           p='android/app/src/main/AndroidManifest.xml'
           s=open(p,encoding='utf-8').read()
-          if 'POST_NOTIFICATIONS' not in s:
-              s=s.replace('</manifest>','    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>')
+          for perm in ('POST_NOTIFICATIONS','USE_BIOMETRIC'):
+              if perm not in s:
+                  s=s.replace('</manifest>','    <uses-permission android:name="android.permission.'+perm+'" />\n</manifest>')
           open(p,'w',encoding='utf-8').write(s)
           PY
 
@@ -49,6 +57,49 @@ jobs:
           s=re.sub(r'(<string name="app_name">)[^<]*(</string>)',r'\1হাতখরচ\2',s)
           s=re.sub(r'(<string name="title_activity_main">)[^<]*(</string>)',r'\1হাতখরচ\2',s)
           open(p,'w',encoding='utf-8').write(s)
+          PY
+
+      - name: App icon
+        continue-on-error: true
+        run: |
+          pip install pillow || pip install --break-system-packages pillow
+          python3 - <<'PY'
+          import math,os,sys
+          from PIL import Image,ImageDraw
+          BG=(15,118,110,255)
+          def ring(d,cx,cy,r,w,frac,col,track):
+              d.ellipse([cx-r,cy-r,cx+r,cy+r],outline=track,width=w)
+              d.arc([cx-r,cy-r,cx+r,cy+r],-90,-90+360*frac,fill=col,width=w)
+              for a in (-90,-90+360*frac):
+                  x=cx+(r-w/2)*math.cos(math.radians(a));y=cy+(r-w/2)*math.sin(math.radians(a))
+                  d.ellipse([x-w/2,y-w/2,x+w/2,y+w/2],fill=col)
+          def art(size,adaptive,round_=False):
+              S=size*4
+              im=Image.new('RGBA',(S,S),(0,0,0,0));d=ImageDraw.Draw(im)
+              if not adaptive:
+                  if round_:d.ellipse([0,0,S-1,S-1],fill=BG)
+                  else:d.rounded_rectangle([0,0,S-1,S-1],radius=int(S*0.22),fill=BG)
+                  k=0.36
+              else:k=0.27
+              c=S/2;track=(68,148,142,255)
+              ring(d,c,c,S*k,int(S*k*0.2),0.75,(253,186,116,255),track)
+              ring(d,c,c,S*k*0.68,int(S*k*0.19),0.62,(94,234,212,255),track)
+              r=S*k*0.2;d.ellipse([c-r,c-r,c+r,c+r],fill=(255,255,255,255))
+              return im.resize((size,size),Image.LANCZOS)
+          def main(res):
+              legacy={'mdpi':48,'hdpi':72,'xhdpi':96,'xxhdpi':144,'xxxhdpi':192}
+              fore={'mdpi':108,'hdpi':162,'xhdpi':216,'xxhdpi':324,'xxxhdpi':432}
+              for k in legacy:
+                  dr=os.path.join(res,'mipmap-'+k);os.makedirs(dr,exist_ok=True)
+                  art(legacy[k],False).save(os.path.join(dr,'ic_launcher.png'))
+                  art(legacy[k],False,True).save(os.path.join(dr,'ic_launcher_round.png'))
+                  art(fore[k],True).save(os.path.join(dr,'ic_launcher_foreground.png'))
+              v=os.path.join(res,'mipmap-anydpi-v26');os.makedirs(v,exist_ok=True)
+              xml='<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/hk_icon_bg"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n'
+              for n in ('ic_launcher.xml','ic_launcher_round.xml'):open(os.path.join(v,n),'w').write(xml)
+              vals=os.path.join(res,'values');os.makedirs(vals,exist_ok=True)
+              open(os.path.join(vals,'hk_colors.xml'),'w').write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="hk_icon_bg">#0F766E</color>\n</resources>\n')
+          main('android/app/src/main/res')
           PY
 
       - name: Use fixed signing key (so every update installs over the old app)
