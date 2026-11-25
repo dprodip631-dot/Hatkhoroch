@@ -50,6 +50,16 @@ button{font:inherit;color:inherit;cursor:pointer}
 .hero .lbl{font-size:14px;color:var(--muted)}
 .hero .big{font-size:40px;line-height:1.15;font-weight:700;color:var(--fg)}
 .hero .big.neg{color:var(--danger)}
+.hero{background:linear-gradient(160deg,#0F766E,#134E4A);color:#fff}
+.hero .lbl,.hero .hint,.hero .st,.hero .mhead .t{color:#D5F3EE}
+.hero .big{color:#fff}
+.hero .num,.hero b{color:inherit}
+.hero .big.neg,.hero .neg,.hero .num.neg{color:#FFB4A9}
+.hero .bar{background:rgba(255,255,255,.2)}
+.hero .fill{background:#5EEAD4}
+.hero .near .fill{background:#FDBA74} .hero .over .fill{background:#FFB4A9}
+.hero .near .st{color:#FDBA74} .hero .over .st{color:#FFB4A9}
+.hero .link{color:#fff}
 .meter{display:flex;flex-direction:column;gap:6px}
 .mhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px;flex-wrap:wrap}
 .mhead .t{font-weight:600}
@@ -194,6 +204,7 @@ nav.tabs .in{pointer-events:auto;max-width:496px;margin-inline:auto;display:grid
     <input class="txt" id="lockPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
     <div class="hint" id="lockErr" role="alert"></div>
     <button class="primary" type="submit">খুলুন</button>
+    <button class="ghost" type="button" id="lockBio" data-act="bio-unlock" hidden>আঙুলের ছাপ দিয়ে খুলুন</button>
   </form>
 </div>
 <nav class="tabs" aria-label="প্রধান মেনু"><div class="in">
@@ -221,7 +232,7 @@ function walName(id){for(var i=0;i<WAL.length;i++){if(WAL[i].id===id)return WAL[
 function srcName(id){for(var i=0;i<SRC.length;i++){if(SRC[i].id===id)return SRC[i].n;}return SRC[SRC.length-1].n;}
 
 var K2='hatkhoroch-v2',K1='hatkhoroch-v1',storageOk=true;
-function defState(){return {income:[],expenses:[],fixed:[],fixedLog:{},goals:[],savings:[],debts:[],transfers:[],cats:[],quick:[],wallets:{cash:0,bank:0,bkash:0,savings:0},limits:{daily:0,monthly:0,cats:{},skip:['loan']},settings:{pin:'',carry:true,salaryDay:0,cycleDay:1,lastBackup:0,leftDone:'',lastAlert:'',rem:{on:false,time:'21:00',alerts:true}}};}
+function defState(){return {income:[],expenses:[],fixed:[],fixedLog:{},goals:[],savings:[],debts:[],transfers:[],cats:[],quick:[],wallets:{cash:0,bank:0,bkash:0,savings:0},limits:{daily:0,monthly:0,cats:{},skip:['loan']},settings:{pin:'',carry:true,salaryDay:0,cycleDay:1,lastBackup:0,leftDone:'',lastAlert:'',rem:{on:false,time:'21:00',alerts:true},bio:false}};}
 var S=defState();
 function adopt(o){
   if(!o||typeof o!=='object')return false;
@@ -234,7 +245,7 @@ function adopt(o){
   if(o.limits){S.limits.daily=+o.limits.daily||0;S.limits.monthly=+o.limits.monthly||0;S.limits.cats=(o.limits.cats&&typeof o.limits.cats==='object')?o.limits.cats:{};S.limits.skip=Array.isArray(o.limits.skip)?o.limits.skip.map(String):['loan'];}
   if(o.settings){S.settings.pin=String(o.settings.pin||'');S.settings.carry=o.settings.carry!==false;S.settings.salaryDay=+o.settings.salaryDay||0;
     var cd0=+o.settings.cycleDay||1;S.settings.cycleDay=(cd0>=1&&cd0<=28)?cd0:1;S.settings.lastBackup=+o.settings.lastBackup||0;S.settings.leftDone=String(o.settings.leftDone||'');
-    var r0=o.settings.rem||{};S.settings.rem={on:!!r0.on,time:/^\d\d:\d\d$/.test(r0.time||'')?r0.time:'21:00',alerts:r0.alerts!==false};S.settings.lastAlert=String(o.settings.lastAlert||'');}
+    var r0=o.settings.rem||{};S.settings.rem={on:!!r0.on,time:/^\d\d:\d\d$/.test(r0.time||'')?r0.time:'21:00',alerts:r0.alerts!==false};S.settings.lastAlert=String(o.settings.lastAlert||'');S.settings.bio=!!o.settings.bio;}
   return true;
 }
 try{
@@ -243,7 +254,18 @@ try{
   if(raw){adopt(JSON.parse(raw));}
   else{var raw1=localStorage.getItem(K1);if(raw1)adopt(JSON.parse(raw1));}
 }catch(e){storageOk=false;}
-function save(){try{localStorage.setItem(K2,JSON.stringify(S));}catch(e){storageOk=false;}queueSync();}
+function save(){
+  try{
+    var d0=todayKey();
+    if(localStorage.getItem('hk-snapday')!==d0){
+      var old=localStorage.getItem(K2);
+      if(old){localStorage.setItem('hk-prevday',old);localStorage.setItem('hk-prevdate',localStorage.getItem('hk-snapday')||'');}
+      localStorage.setItem('hk-snapday',d0);
+    }
+    localStorage.setItem(K2,JSON.stringify(S));
+  }catch(e){storageOk=false;}
+  queueSync();
+}
 
 var selBig=false, openDay=null, view='home', selCat='tea', selSrc='salary', selDebt='owe', lastWal='bank', confirmClear=false, toastTimer=null, autoMade=0;
 var mRef=pRef(curPre()), editId=null, editBig=false;
@@ -316,21 +338,45 @@ function walBal(w){
 }
 function goalSaved(id){return tot(S.savings.filter(function(s){return s.goalId===id;}));}
 
+var WDN=['রবি','সোম','মঙ্গল','বুধ','বৃহস্পতি','শুক্র','শনি'];
+function isWeekly(f){return f.wd!==undefined&&f.wd!==null&&f.wd!=='';}
+function logCount(f){var p=f.id+'|',c=0;Object.keys(S.fixedLog).forEach(function(k){if(k.indexOf(p)===0)c++;});return c;}
+function fxDone(f){return (+f.done0||0)+logCount(f);}
+function fxComplete(f){return +f.total>0&&fxDone(f)>=+f.total;}
+function fxLive(f){return f.active&&!fxComplete(f);}
+function fxM(f){return {amount:isWeekly(f)?Math.round(f.amount*52/12):f.amount};}
 function runFixed(){
   var tk=todayKey(),n=new Date(),ty=n.getFullYear(),tm=n.getMonth(),made=0;
   S.fixed.forEach(function(f){
     if(!f.active)return;
-    var p=f.start.split('-'),y=+p[0],m=+p[1]-1,guard=0;
+    function mk(dk,lk){
+      S.fixedLog[lk]=1;
+      var ex={id:uid(),date:dk,amount:f.amount,cat:f.cat,note:f.name,t:dateToT(dk),wallet:f.wallet||'bank',fixedId:f.id,auto:true};
+      if(f.sample)ex.sample=true;
+      S.expenses.push(ex);made++;
+    }
+    var guard=0;
+    if(isWeekly(f)){
+      var sd=dateOf(f.startD||tk);
+      while(sd.getDay()!==+f.wd&&guard<8){sd.setDate(sd.getDate()+1);guard++;}
+      var dk=keyOf(sd);guard=0;
+      while(dk<=tk&&guard<800){
+        guard++;
+        var lk=f.id+'|'+dk;
+        if(!S.fixedLog[lk]){if(fxComplete(f))break;mk(dk,lk);}
+        dk=addDays(dk,7);
+      }
+      return;
+    }
+    var p=f.start.split('-'),y=+p[0],m=+p[1]-1;
     while((y<ty||(y===ty&&m<=tm))&&guard<600){
       guard++;
       var dim=new Date(y,m+1,0).getDate();
-      var dk=y+'-'+pad(m+1)+'-'+pad(Math.min(f.day,dim));
-      var lk=f.id+'|'+y+'-'+pad(m+1);
-      if(dk<=tk&&!S.fixedLog[lk]){
-        S.fixedLog[lk]=1;
-        var ex={id:uid(),date:dk,amount:f.amount,cat:f.cat,note:f.name,t:dateToT(dk),wallet:f.wallet||'bank',fixedId:f.id,auto:true};
-        if(f.sample)ex.sample=true;
-        S.expenses.push(ex);made++;
+      var dk2=y+'-'+pad(m+1)+'-'+pad(Math.min(f.day,dim));
+      var lk2=f.id+'|'+y+'-'+pad(m+1);
+      if(dk2<=tk&&!S.fixedLog[lk2]){
+        if(fxComplete(f))break;
+        mk(dk2,lk2);
       }
       m++;if(m>11){m=0;y++;}
     }
@@ -349,7 +395,12 @@ function upcoming(days){
     return null;
   }
   S.fixed.forEach(function(f){
-    if(!f.active)return;
+    if(!fxLive(f))return;
+    if(isWeekly(f)){
+      var d0=((+f.wd)-t0.getDay()+7)%7;
+      if(d0<=days)out.push({kind:'bill',name:f.name,amount:f.amount,diff:d0});
+      return;
+    }
     var x=nextOf(f.day);
     if(x&&x.diff<=days&&monthKey(x.d.getFullYear(),x.d.getMonth())>=f.start)out.push({kind:'bill',name:f.name,amount:f.amount,diff:x.diff});
   });
@@ -362,7 +413,7 @@ function upcoming(days){
 function inDays(d){return d===0?'আজ':d===1?'আগামীকাল':nf.format(d)+' দিন পরে';}
 
 function skipCat(id){return (S.limits.skip||[]).indexOf(id)>-1;}
-function limitList(list){return list.filter(function(e){return !e.auto&&!skipCat(e.cat);});}
+function limitList(list){return list.filter(function(e){return !e.auto&&!e.adj&&!skipCat(e.cat);});}
 
 function dayAllowance(k){
   var m=+S.limits.monthly||0;
@@ -493,9 +544,14 @@ function syncReminders(){
     if(!rem.on)return null;
     var list=[],hm=rem.time.split(':'),nowT=Date.now(),idn=100;
     list.push({id:1,title:'হাতখরচ',body:'আজকের খরচ লিখেছেন তো?',schedule:{on:{hour:+hm[0],minute:+hm[1]},allowWhileIdle:true}});
+    list.push({id:2,title:'ব্যাকআপ নেওয়ার দিন',body:'সপ্তাহে একবার ব্যাকআপ ফাইল নিজের কাছে রাখুন। হাতখরচ খুলে আরও > ব্যাকআপ চাপুন।',schedule:{on:{weekday:6,hour:10,minute:0},allowWhileIdle:true}});
     function add(at,title,body){if(at.getTime()>nowT+60000&&list.length<60)list.push({id:idn++,title:title,body:body,schedule:{at:at,allowWhileIdle:true}});}
-    S.fixed.forEach(function(f){
-      if(!f.active)return;
+    S.fixed.forEach(function(f,fi){
+      if(!fxLive(f))return;
+      if(isWeekly(f)){
+        if(list.length<60)list.push({id:300+fi,title:'আজ '+f.name,body:taka(f.amount)+' সাপ্তাহিক খরচ আজ হিসাবে যোগ হবে',schedule:{on:{weekday:(+f.wd)+1,hour:9,minute:0},allowWhileIdle:true}});
+        return;
+      }
       occurs(f.day,2).forEach(function(d){
         add(new Date(d.getFullYear(),d.getMonth(),d.getDate()-1,9,0),'আগামীকাল '+f.name,taka(f.amount)+' নির্ধারিত খরচের দিন কাল');
         add(new Date(d.getFullYear(),d.getMonth(),d.getDate(),9,0),'আজ '+f.name,taka(f.amount)+' আজ হিসাবে যোগ হবে');
@@ -545,7 +601,7 @@ function homeNotes(){
     if((pf.inc>0||pf.exp>0)&&pf.left>=100)h+='<div class="note"><span>গত মাসে '+taka(Math.floor(pf.left))+' অবশিষ্ট ছিল। সঞ্চয়ে নেবেন?</span><button class="link" data-act="left-go" data-id="'+pp+'">দেখুন</button></div>';
   }
   var lb=+S.settings.lastBackup||0;
-  if(S.expenses.length>=5&&(!lb||Date.now()-lb>7*86400000))h+='<div class="note"><span>'+(lb?'৭ দিনের বেশি ব্যাকআপ নেওয়া হয়নি।':'এখনো ব্যাকআপ নেওয়া হয়নি।')+' ফোন হারালে হিসাব চলে যাবে।</span><button class="link" data-view="security">ব্যাকআপ নিন</button></div>';
+  if(S.expenses.length>=5&&(!lb||Date.now()-lb>7*86400000))h+='<div class="note"><span>'+(lb?'৭ দিনের বেশি ব্যাকআপ নেওয়া হয়নি।':'এখনো ব্যাকআপ নেওয়া হয়নি।')+' ফোন হারালে হিসাব চলে যাবে।</span>'+(isNative()?'<button class="link" data-act="backup-share">এখনই পাঠান</button>':'<button class="link" data-view="security">ব্যাকআপ নিন</button>')+'</div>';
   return h;
 }
 function quickHtml(){
@@ -588,10 +644,11 @@ function leftoverCard(pre,f){
     '<div class="field"><label for="lwal">কোথা থেকে</label>'+walSelect('lwal')+'</div></div>'+
     '<div class="hint" id="leftErr" role="alert"></div><button class="primary" type="submit">সঞ্চয়ে জমা দিন</button></form>';
 }
+var editKind='exp';
 function openEdit(id){
   var e=null;S.expenses.forEach(function(x){if(String(x.id)===id)e=x;});
   if(!e)return;
-  editId=id;editBig=!!e.big;
+  editKind='exp';editId=id;editBig=!!e.big;
   document.getElementById('editForm').innerHTML='<h2>খরচ সম্পাদনা</h2>'+
     '<div class="amtrow"><span>৳</span><input id="eamt" inputmode="decimal" value="'+nfPlain.format(e.amount)+'" aria-label="টাকা"></div>'+
     '<div class="field"><label for="ecat">খাত</label><select class="txt" id="ecat">'+allCats().map(function(c){return '<option value="'+c.id+'"'+(c.id===e.cat?' selected':'')+'>'+c.n+'</option>';}).join('')+'</select></div>'+
@@ -604,6 +661,68 @@ function openEdit(id){
     '<div class="inl"><button type="button" class="ghost small" data-act="edit-cancel" style="flex:1">বাতিল</button><button type="button" class="ghost small danger-btn" data-act="edit-del" style="flex:1">মুছে ফেলুন</button></div>';
   document.getElementById('editSheet').hidden=false;
   setTimeout(function(){var x=document.getElementById('eamt');if(x)x.focus();},50);
+}
+function editTail(){
+  return '<div class="hint" id="editErr" role="alert"></div><button class="primary" type="submit">সংরক্ষণ করুন</button>'+
+    '<div class="inl"><button type="button" class="ghost small" data-act="edit-cancel" style="flex:1">বাতিল</button><button type="button" class="ghost small danger-btn" data-act="edit-del" style="flex:1">মুছে ফেলুন</button></div>';
+}
+function walOpts(def){return WAL.map(function(w){return '<option value="'+w.id+'"'+(w.id===def?' selected':'')+'>'+w.n+'</option>';}).join('');}
+function openEditOther(kind,id){
+  var arr=kind==='inc'?S.income:(kind==='fix'?S.fixed:S.debts),o=null;
+  arr.forEach(function(x){if(String(x.id)===id)o=x;});
+  if(!o)return;
+  editKind=kind;editId=id;
+  var h='';
+  if(kind==='inc'){
+    h='<h2>আয় সম্পাদনা</h2><div class="amtrow"><span>৳</span><input id="eamt" inputmode="decimal" value="'+nfPlain.format(o.amount)+'" aria-label="টাকা"></div>'+
+      '<div class="field"><label for="esrc">ধরন</label><select class="txt" id="esrc">'+SRC.map(function(x){return '<option value="'+x.id+'"'+(x.id===o.source?' selected':'')+'>'+x.n+'</option>';}).join('')+'</select></div>'+
+      '<div class="field"><label for="enote">বিবরণ</label><input class="txt" id="enote" maxlength="60" value="'+esc(o.note||'')+'"></div>'+
+      '<div class="two"><div class="field"><label for="edt">তারিখ</label><input class="txt" type="date" id="edt" value="'+o.date+'"></div><div class="field"><label for="ewl">ওয়ালেট</label><select class="txt" id="ewl">'+walOpts(o.wallet||'cash')+'</select></div></div>'+editTail();
+  }else if(kind==='fix'){
+    h='<h2>নির্ধারিত খরচ সম্পাদনা</h2><div class="field"><label for="efn">নাম</label><input class="txt" id="efn" maxlength="40" value="'+esc(o.name)+'"></div>'+
+      '<div class="amtrow"><span>৳</span><input id="eamt" inputmode="decimal" value="'+nfPlain.format(o.amount)+'" aria-label="টাকা"></div>'+
+      (isWeekly(o)?'<div class="field"><label for="efwd">কোন বার</label>'+wdSelect('efwd',+o.wd)+'</div>':'<div class="field"><label for="efday">মাসের কত তারিখে</label><input class="txt" id="efday" inputmode="numeric" value="'+nfPlain.format(o.day)+'"></div>')+
+      '<div class="two"><div class="field"><label for="ecat">খাত</label><select class="txt" id="ecat">'+allCats().map(function(c){return '<option value="'+c.id+'"'+(c.id===o.cat?' selected':'')+'>'+c.n+'</option>';}).join('')+'</select></div>'+
+      '<div class="field"><label for="ewl">ওয়ালেট</label><select class="txt" id="ewl">'+walOpts(o.wallet||'bank')+'</select></div></div>'+
+      '<div class="two"><div class="field"><label for="eftot">মোট কিস্তি (ফাঁকা = সীমাহীন)</label><input class="txt" id="eftot" inputmode="numeric" value="'+(o.total?nfPlain.format(o.total):'')+'"></div>'+
+      '<div class="field"><label for="efdone">আগে দেওয়া (অ্যাপের বাইরে)</label><input class="txt" id="efdone" inputmode="numeric" value="'+(o.done0?nfPlain.format(o.done0):'')+'"></div></div>'+
+      '<p class="hint">নতুন টাকা বা তারিখ শুধু এরপর থেকে লাগবে। আগে যোগ হওয়া খরচ বদলাবে না।</p>'+editTail();
+  }else{
+    h='<h2>হিসাব সম্পাদনা</h2><div class="field"><label for="edp">কার সাথে</label><input class="txt" id="edp" maxlength="40" value="'+esc(o.person)+'"></div>'+
+      '<div class="two"><div class="field"><label for="eamt">মোট টাকা (৳)</label><input class="txt" id="eamt" inputmode="decimal" value="'+nfPlain.format(o.amount)+'"></div>'+
+      '<div class="field"><label for="edpaid">এ পর্যন্ত '+(o.kind==='owe'?'শোধ':'আদায়')+' (৳)</label><input class="txt" id="edpaid" inputmode="decimal" value="'+nfPlain.format(o.paid||0)+'"></div></div>'+
+      '<div class="field"><label for="enote">বিবরণ</label><input class="txt" id="enote" maxlength="60" value="'+esc(o.note||'')+'"></div>'+editTail();
+  }
+  document.getElementById('editForm').innerHTML=h;
+  document.getElementById('editSheet').hidden=false;
+  setTimeout(function(){var x=document.getElementById('eamt');if(x)x.focus();},50);
+}
+function submitEditOther(){
+  var arr=editKind==='inc'?S.income:(editKind==='fix'?S.fixed:S.debts),o=null,a=parseAmt(val('eamt')),dk;
+  arr.forEach(function(x){if(String(x.id)===editId)o=x;});
+  if(!o){document.getElementById('editSheet').hidden=true;return;}
+  if(!(a>0)){fail('editErr','সঠিক টাকার অঙ্ক লিখুন।','eamt');return;}
+  var snapE=snapshot();
+  if(editKind==='inc'){
+    dk=val('edt');if(!validDate(dk))dk=o.date;
+    if(dk!==o.date){o.date=dk;o.t=dateToT(dk);}
+    o.amount=a;o.source=val('esrc')||o.source;o.note=val('enote').trim();o.wallet=val('ewl')||o.wallet;
+  }else if(editKind==='fix'){
+    var nm=val('efn').trim();if(!nm){fail('editErr','নাম লিখুন।','efn');return;}
+    var tt=parseInt(toEn(val('eftot')),10)||0,dn=parseInt(toEn(val('efdone')),10)||0;
+    if(tt<0||dn<0||(tt>0&&dn>=tt)){fail('editErr','আগে দেওয়া কিস্তি মোট কিস্তির চেয়ে কম হতে হবে।','efdone');return;}
+    if(isWeekly(o)){o.wd=+val('efwd');}
+    else{var dy=parseInt(toEn(val('efday')),10);if(!(dy>=1&&dy<=31)){fail('editErr','তারিখ ১ থেকে ৩১-এর মধ্যে হতে হবে।','efday');return;}o.day=dy;}
+    o.name=nm;o.amount=a;o.cat=val('ecat')||o.cat;o.wallet=val('ewl')||o.wallet;
+    if(tt>0){o.total=tt;o.done0=dn;}else{delete o.total;delete o.done0;}
+  }else{
+    var pn=val('edp').trim();if(!pn){fail('editErr','নাম লিখুন।','edp');return;}
+    var pd=parseAmt(val('edpaid'));if(!isFinite(pd)||pd<0)pd=0;
+    if(pd>a){fail('editErr','শোধ করা টাকা মোট টাকার বেশি হতে পারে না।','edpaid');return;}
+    o.person=pn;o.amount=a;o.paid=pd;o.note=val('enote').trim();
+  }
+  document.getElementById('editSheet').hidden=true;editId=null;editKind='exp';
+  save();render(false);showToast('ঠিক করা হয়েছে','ফিরিয়ে আনুন',function(){restoreSnap(snapE);});
 }
 function vCust(){
   var h=head('খাত ও দ্রুত খরচ',true);
@@ -708,8 +827,9 @@ function vHome(){
 function entryRow(e){
   var c=catById(e.cat),time=fmtDate(new Date(e.t),{hour:'numeric',minute:'2-digit'});
   return '<li class="row"><span class="dot" style="background:var('+c.v+')"></span>'+
-    '<div class="rmain"><div class="rtitle">'+esc(e.note||c.n)+'</div><div class="rsub">'+c.n+' · '+time+' · '+walName(e.wallet||'cash')+(e.auto?' · নির্ধারিত':'')+(e.big?' · বড় খরচ':'')+(e.sample?' · নমুনা':'')+'</div></div>'+
-    '<div class="ramt num">'+taka(e.amount)+'</div><button class="x" data-act="edit" data-id="'+e.id+'" aria-label="'+esc(e.note||c.n)+' সম্পাদনা">সম্পাদনা</button></li>';
+    '<div class="rmain"><div class="rtitle">'+esc(e.note||c.n)+'</div><div class="rsub">'+c.n+' · '+time+' · '+walName(e.wallet||'cash')+(e.auto?' · নির্ধারিত':'')+(e.adj?' · হিসাব মিলানো':'')+(e.big?' · বড় খরচ':'')+(e.sample?' · নমুনা':'')+'</div></div>'+
+    '<div class="ramt num">'+taka(e.amount)+'</div>'+((e.auto||e.adj)?'':'<button class="x" data-act="repeat" data-id="'+e.id+'" aria-label="'+esc(e.note||c.n)+' আজকের জন্য আবার যোগ করুন">আবার</button>')+
+    '<button class="x" data-act="edit" data-id="'+e.id+'" aria-label="'+esc(e.note||c.n)+' সম্পাদনা">সম্পাদনা</button></li>';
 }
 function expHistoryCard(){
   return '<section class="card"><h2>আগের খরচ</h2><p class="hint">আজকের আগের সব খরচ এখানেই আছে, হারায়নি। মাস ধরে দেখুন বা নাম লিখে খুঁজুন।</p><button class="ghost" data-view="all">সব খরচ ও লেনদেন দেখুন</button></section>';
@@ -765,6 +885,35 @@ function vAll(){
      '<div id="allList">'+allListHtml(pre)+'</div></section>';
   return h;
 }
+var sugList=[];
+function freqNotes(q){
+  q=(q||'').trim().toLowerCase();
+  var by={};
+  S.expenses.forEach(function(e){
+    if(e.auto||e.adj||e.sample)return;
+    var n=(e.note||'').trim();if(!n)return;
+    var k=n.toLowerCase();
+    if(q&&k.indexOf(q)<0)return;
+    var o=by[k]||(by[k]={note:n,n:0,amts:{},cat:e.cat,t:0});
+    o.n++;o.amts[e.amount]=(o.amts[e.amount]||0)+1;
+    if((e.t||0)>=o.t){o.t=e.t||0;o.cat=e.cat;o.note=n;}
+  });
+  var out=Object.keys(by).map(function(k){
+    var o=by[k],best=0,ba=0;
+    Object.keys(o.amts).forEach(function(a){var c=o.amts[a];if(c>best||(c===best&&+a>ba)){best=c;ba=+a;}});
+    o.amt=ba;return o;
+  });
+  out.sort(function(a,b){return b.n-a.n||b.t-a.t;});
+  return out.slice(0,6);
+}
+function sugHtml(q){
+  sugList=freqNotes(q);
+  if(!sugList.length)return '';
+  return '<span class="hint" style="width:100%">'+(q?'আগের মতো (চাপলে খাত ও টাকা বসে যাবে):':'সচরাচর যা লেখেন (চাপলে খাত ও টাকা বসে যাবে):')+'</span>'+sugList.map(function(o,i){
+    var c=catById(o.cat);
+    return '<button type="button" class="chip" data-act="sug" data-id="'+i+'"><span class="dot" style="background:var('+c.v+')"></span>'+esc(o.note)+' '+taka(o.amt)+'</button>';
+  }).join('');
+}
 function vExp0(){
   var tk=todayKey(),list=ofDay(tk).sort(function(a,b){return b.t-a.t;}),total=tot(list),mtotal=tot(limitList(inRange(S.expenses,curPre())));
   var h=head('আজকের খরচ',false);
@@ -777,6 +926,7 @@ function vExp0(){
      '<div class="chips" role="group" aria-label="খাত">'+allCats().map(function(c){
        return '<button type="button" class="chip" data-cat="'+c.id+'" aria-pressed="'+(c.id===selCat)+'"><span class="dot" style="background:var('+c.v+')"></span>'+c.n+'</button>';}).join('')+'</div>'+
      '<input class="txt" id="note" maxlength="60" placeholder="কিসের জন্য? (ঐচ্ছিক)" aria-label="বিবরণ">'+
+     '<div class="chips" id="sugBox">'+sugHtml('')+'</div>'+
      '<div><button type="button" class="chip" data-big="1" aria-pressed="'+selBig+'">বড় খরচ</button><p class="hint" style="margin-top:6px">মাসের বাজার বা মাছ-মাংসের মতো বড় খরচে চাপ দিন। এটা মাসের লিমিটে ধরা হয়, কিন্তু আজকের সীমায় ধরা হয় না।</p></div>'+
      '<div class="two"><div class="field"><label for="edate">তারিখ</label><input class="txt" type="date" id="edate" value="'+tk+'"></div>'+
      '<div class="field"><label for="ewal">কোথা থেকে দিলেন</label>'+walSelect('ewal')+'</div></div>'+
@@ -800,7 +950,7 @@ function defSal(){
 function allocVals(){
   var days=periodDays(curPre());
   var sal=alloc.sal!==null?(parseAmt(alloc.sal)||0):defSal();
-  var fx=tot(S.fixed.filter(function(f){return f.active;}));
+  var fx=tot(S.fixed.filter(fxLive).map(fxM));
   var daily=parseAmt(alloc.daily)||0,sv=parseAmt(alloc.save)||0;
   var left=sal-fx-daily-sv;
   return {sal:sal,fx:fx,daily:daily,sv:sv,left:left,days:days,perDay:daily?Math.floor(daily/days):0};
@@ -824,14 +974,14 @@ function vInc(){
      '<button class="primary" type="submit">আয় যোগ করুন</button></form>';
   h+='<section class="card"><h2>বেতন বরাদ্দের হিসাব</h2><p class="hint">বেতন থেকে নির্ধারিত খরচ, দৈনন্দিন খরচ আর সঞ্চয় আলাদা করলে কত থাকে, দেখুন।</p>'+
      '<div class="field"><label for="al-sal">মাসিক বেতন (৳)</label><input class="txt" id="al-sal" data-alloc="sal" inputmode="decimal" value="'+(alloc.sal!==null?esc(alloc.sal):(defSal()?nfPlain.format(defSal()):''))+'" placeholder="যেমন ২৭০০০"></div>'+
-     '<div class="row" style="border:0;padding:0"><div class="rmain"><div class="rtitle">নির্ধারিত খরচ (নিজে হিসাব হয়)</div><button class="link" data-view="fixed">নির্ধারিত খরচ দেখুন</button></div><div class="ramt num">'+taka(tot(S.fixed.filter(function(f){return f.active;})))+'</div></div>'+
+     '<div class="row" style="border:0;padding:0"><div class="rmain"><div class="rtitle">নির্ধারিত খরচ (নিজে হিসাব হয়)</div><button class="link" data-view="fixed">নির্ধারিত খরচ দেখুন</button></div><div class="ramt num">'+taka(tot(S.fixed.filter(fxLive).map(fxM)))+'</div></div>'+
      '<div class="two"><div class="field"><label for="al-daily">দৈনন্দিন খরচের বাজেট (মাসে ৳)</label><input class="txt" id="al-daily" data-alloc="daily" inputmode="decimal" value="'+esc(alloc.daily)+'" placeholder="যেমন ১০০০০"></div>'+
      '<div class="field"><label for="al-save">সঞ্চয়ের লক্ষ্য (মাসে ৳)</label><input class="txt" id="al-save" data-alloc="save" inputmode="decimal" value="'+esc(alloc.save)+'" placeholder="যেমন ৩০০০"></div></div>'+
      '<div id="allocOut" class="sec">'+allocOut()+'</div>'+
      '<button class="ghost" data-act="alloc-limit">এই বাজেটকে মাসিক লিমিট হিসেবে বসান</button></section>';
   if(list.length){
     h+='<section class="card"><h2>এই মাসের আয়</h2><ul class="list">'+list.map(function(i){
-      return '<li class="row"><span class="dot" style="background:var(--accent)"></span><div class="rmain"><div class="rtitle">'+srcName(i.source)+(i.note?' · '+esc(i.note):'')+'</div><div class="rsub">'+fmtDate(dateOf(i.date),{day:'numeric',month:'short'})+' · '+walName(i.wallet||'cash')+(i.sample?' · নমুনা':'')+'</div></div><div class="ramt num pos">+'+taka(i.amount)+'</div>'+delBtn('income',i.id,srcName(i.source))+'</li>';
+      return '<li class="row"><span class="dot" style="background:var(--accent)"></span><div class="rmain"><div class="rtitle">'+srcName(i.source)+(i.note?' · '+esc(i.note):'')+'</div><div class="rsub">'+fmtDate(dateOf(i.date),{day:'numeric',month:'short'})+' · '+walName(i.wallet||'cash')+(i.sample?' · নমুনা':'')+'</div></div><div class="ramt num pos">+'+taka(i.amount)+'</div>'+(i.adj?'':'<button class="x" data-act="edit-inc" data-id="'+i.id+'">সম্পাদনা</button>')+delBtn('income',i.id,srcName(i.source))+'</li>';
     }).join('')+'</ul></section>';
   }
   return h;
@@ -883,6 +1033,48 @@ function csvText(){
   rows.sort(function(a,b){return a[0]<b[0]?-1:1;});
   return ['তারিখ,ধরন,খাত,টাকা,বিবরণ,ওয়ালেট'].concat(rows.map(function(r){return r.map(q).join(',');})).join('\n');
 }
+var WDS=['রবি','সোম','মঙ্গল','বুধ','বৃহ','শুক্র','শনি'];
+function prevPre(pre){return monthKey(+pre.slice(0,4),+pre.slice(5,7)-2);}
+function compareCard(pre,exps){
+  var pp=prevPre(pre),pex=inRange(S.expenses,pp).filter(function(e){return !e.adj;}),cur=exps.filter(function(e){return !e.adj;});
+  var isCur=(pre===curPre()),label='গত মাসে';
+  if(isCur){
+    var el=Math.round((dateOf(todayKey())-dateOf(pStart(pre)))/86400000),lim=addDays(pStart(pp),el);
+    pex=pex.filter(function(e){return e.date<=lim;});
+    label='গত মাসের একই সময়ে';
+  }
+  if(!pex.length)return '';
+  var a=tot(cur),b=tot(pex),d=a-b,by={},ids,k;
+  cur.forEach(function(e){(by[e.cat]=by[e.cat]||{n:0,p:0}).n+=e.amount;});
+  pex.forEach(function(e){(by[e.cat]=by[e.cat]||{n:0,p:0}).p+=e.amount;});
+  ids=Object.keys(by).filter(function(id){return Math.abs(by[id].n-by[id].p)>=1;}).sort(function(x,y){return Math.abs(by[y].n-by[y].p)-Math.abs(by[x].n-by[x].p);}).slice(0,4);
+  var h='<section class="card"><h2>গত মাসের সাথে তুলনা</h2><div class="num" style="font-size:26px;font-weight:700;color:'+(d>0?'var(--spend)':'var(--accent)')+'">'+(d>0?'+':(d<0?'−':''))+taka(Math.abs(d))+'</div>'+
+    '<div class="st">'+(d===0?'একই খরচ হয়েছে':(d>0?'বেশি খরচ হয়েছে':'কম খরচ হয়েছে'))+'। এখন '+taka(a)+', '+label+' ছিল '+taka(b)+'।</div>';
+  if(ids.length){
+    h+='<ul class="list">'+ids.map(function(id){
+      var c=catById(id),x=by[id],dd=x.n-x.p;
+      return '<li class="row"><span class="dot" style="background:var('+c.v+')"></span><div class="rmain"><div class="rtitle">'+c.n+'</div><div class="rsub">এখন '+taka(x.n)+' · আগে '+taka(x.p)+'</div></div><div class="ramt num" style="color:'+(dd>0?'var(--spend)':'var(--accent)')+'">'+(dd>0?'▲ ':'▼ ')+taka(Math.abs(dd))+'</div></li>';
+    }).join('')+'</ul>';
+  }
+  return h+'</section>';
+}
+function weekChart(){
+  var tk=todayKey(),data=[],i,mx=1,sum=0,top=null;
+  for(i=6;i>=0;i--){
+    var k=addDays(tk,-i),v=tot(ofDay(k).filter(function(e){return !e.adj;})),o={k:k,v:v,l:WDS[dateOf(k).getDay()]};
+    data.push(o);mx=Math.max(mx,v);sum+=v;if(!top||v>top.v)top=o;
+  }
+  var W=320,base=104,ph=84,gx=W/7,bw=26,sv='';
+  sv+='<line x1="0" y1="'+base+'" x2="'+W+'" y2="'+base+'" style="stroke:var(--line)" stroke-width="1"/>';
+  data.forEach(function(x,j){
+    var cx=gx*j+gx/2,hh=x.v/mx*ph;
+    sv+='<rect x="'+(cx-bw/2)+'" y="'+(base-hh)+'" width="'+bw+'" height="'+Math.max(hh,x.v?2:0)+'" rx="5" style="fill:'+(j===6?'var(--spend)':'var(--accent)')+'"><title>'+x.k+' '+taka(x.v)+'</title></rect>';
+    if(x.v)sv+='<text x="'+cx+'" y="'+(base-hh-4)+'" text-anchor="middle" font-size="10" style="fill:var(--muted)">'+nfPlain.format(x.v)+'</text>';
+    sv+='<text x="'+cx+'" y="120" text-anchor="middle" font-size="11" style="fill:var(--muted)">'+x.l+'</text>';
+  });
+  return '<section class="card"><h2>শেষ ৭ দিন</h2><svg class="chart" viewBox="0 0 '+W+' 128" role="img" aria-label="শেষ সাত দিনের খরচ">'+sv+'</svg>'+
+    '<div class="st">সাত দিনে মোট '+taka(sum)+', দিনে গড় '+taka(Math.round(sum/7))+(top&&top.v?'। সবচেয়ে বেশি '+fmtDate(dateOf(top.k),{weekday:'long'})+' ('+taka(top.v)+')':'')+'।</div></section>';
+}
 function vReport(){
   var pre=monthKey(mRef.y,mRef.m),f=monthFigures(pre),exps=inRange(S.expenses,pre),total=f.exp;
   var days={};exps.forEach(function(e){days[e.date]=(days[e.date]||0)+e.amount;});
@@ -893,6 +1085,8 @@ function vReport(){
      (dk.length?'<div class="st">'+nf.format(dk.length)+' দিনে খরচ, দিনে গড়ে '+taka(avg)+'</div>':'')+'</div>'+
      meter('মাসিক লিমিট',tot(limitList(exps)),S.limits.monthly)+'</section>';
   h+='<div class="stats"><div class="stat"><span class="k">আয়</span><b class="num pos">'+taka(f.inc)+'</b></div><div class="stat"><span class="k">খরচ</span><b class="num">'+taka(f.exp)+'</b></div><div class="stat"><span class="k">সঞ্চয়</span><b class="num">'+taka(f.sav)+'</b></div></div>';
+  if(monthKey(mRef.y,mRef.m)===curPre())h+=weekChart();
+  h+=compareCard(pre,exps);
   h+='<section class="card"><h2>গত ছয় মাস</h2>'+chart6()+'</section>';
   if(exps.length){
     h+='<section class="card"><h2>খাত অনুযায়ী খরচ</h2><div>'+catBreakdown(exps,total)+'</div></section>';
@@ -929,23 +1123,47 @@ function vMore(){
     '</div></section>';
 }
 
+function fxInfo(f){
+  var t='';
+  if(isWeekly(f))t='প্রতি '+WDN[+f.wd]+'বার';else t='প্রতি মাসের '+nf.format(f.day)+' তারিখ';
+  return t;
+}
+function fxProgress(f){
+  if(!(+f.total>0))return '';
+  var d=fxDone(f),tt=+f.total,rem=Math.max(0,tt-d);
+  if(rem===0)return '<div class="st pos">সব '+nf.format(tt)+'টি শেষ</div>'+'<div class="bar"><div class="fill" style="width:100%"></div></div>';
+  var end='';
+  if(isWeekly(f))end=' · বাকি '+nf.format(rem)+' সপ্তাহ';
+  else{
+    var n=new Date(),thisDone=S.fixedLog[f.id+'|'+monthKey(n.getFullYear(),n.getMonth())]?1:0;
+    var ed=new Date(n.getFullYear(),n.getMonth()+thisDone+rem-1,1);
+    end=' · শেষ হবে '+fmtDate(ed,{month:'long',year:'numeric'});
+  }
+  return '<div class="st">কিস্তি '+nf.format(d)+'/'+nf.format(tt)+' দেওয়া হয়েছে, বাকি '+nf.format(rem)+'টি'+end+'</div><div class="bar"><div class="fill" style="width:'+Math.min(100,d/tt*100)+'%"></div></div>';
+}
+function wdSelect(id,def){return '<select class="txt" id="'+id+'">'+WDN.map(function(n,i){return '<option value="'+i+'"'+(i===def?' selected':'')+'>'+n+'বার</option>';}).join('')+'</select>';}
 function vFixed(){
-  var act=S.fixed.filter(function(f){return f.active;});
+  var act=S.fixed.filter(fxLive);
   var h=head('নির্ধারিত খরচ',true);
-  h+='<section class="hero"><div><div class="lbl">মাসে মোট নির্ধারিত খরচ</div><div class="big num">'+taka(tot(act))+'</div></div>'+
-     '<p class="st">তারিখ এলে খরচ নিজে থেকে হিসাবে যোগ হয়ে যায়। এটা ব্যাংক থেকে আসল টাকা কাটে না, শুধু আপনার হিসাবের খাতায় লেখে।</p></section>';
+  h+='<section class="hero"><div><div class="lbl">মাসে মোট নির্ধারিত খরচ</div><div class="big num">'+taka(tot(act.map(fxM)))+'</div></div>'+
+     '<p class="st">তারিখ এলে খরচ নিজে থেকে হিসাবে যোগ হয়ে যায়। এটা ব্যাংক থেকে আসল টাকা কাটে না, শুধু আপনার হিসাবের খাতায় লেখে। সাপ্তাহিক খরচ মাসে গড়ে ৪.৩৩ বার ধরে হিসাব হয়।</p></section>';
   h+='<form class="card" id="fixForm" autocomplete="off"><h2>নতুন নির্ধারিত খরচ</h2>'+
-     '<div class="field"><label for="fname">নাম</label><input class="txt" id="fname" maxlength="40" placeholder="যেমন বাসাভাড়া, বিশ্ববিদ্যালয় ফি"></div>'+
+     '<div class="field"><label for="fname">নাম</label><input class="txt" id="fname" maxlength="40" placeholder="যেমন বাসাভাড়া, কিস্তি, সাপ্তাহিক বাজার"></div>'+
      '<div class="two"><div class="field"><label for="famt">টাকা (৳)</label><input class="txt" id="famt" inputmode="decimal" placeholder="০"></div>'+
-     '<div class="field"><label for="fday">মাসের কত তারিখে</label><input class="txt" id="fday" inputmode="numeric" placeholder="১ থেকে ৩১"></div></div>'+
+     '<div class="field"><label for="ffreq">কতবার</label><select class="txt" id="ffreq"><option value="m">প্রতি মাসে</option><option value="w">প্রতি সপ্তাহে</option></select></div></div>'+
+     '<div class="two"><div class="field"><label for="fday">মাসিক হলে কত তারিখে</label><input class="txt" id="fday" inputmode="numeric" placeholder="১ থেকে ৩১"></div>'+
+     '<div class="field"><label for="fwd">সাপ্তাহিক হলে কোন বার</label>'+wdSelect('fwd',5)+'</div></div>'+
      '<div class="two"><div class="field"><label for="fcat">খাত</label>'+catSelect('fcat').replace('<option value="tea">','<option value="home" selected>বাসা ও পরিবার</option><option value="tea">')+'</div>'+
      '<div class="field"><label for="fwal">কোথা থেকে যাবে</label>'+walSelect('fwal')+'</div></div>'+
+     '<div class="two"><div class="field"><label for="ftotal">মোট কিস্তি কয়টি (ঐচ্ছিক)</label><input class="txt" id="ftotal" inputmode="numeric" placeholder="যেমন ১২, ফাঁকা = চলতেই থাকবে"></div>'+
+     '<div class="field"><label for="fdone">আগে কয়টি দেওয়া হয়ে গেছে</label><input class="txt" id="fdone" inputmode="numeric" placeholder="০"></div></div>'+
      '<div class="hint" id="fixErr" role="alert"></div><button class="primary" type="submit">যোগ করুন</button></form>';
   if(S.fixed.length){
     h+='<section class="card"><h2>তালিকা</h2><ul class="list">'+S.fixed.map(function(f){
-      var c=catById(f.cat);
-      return '<li class="row"><span class="dot" style="background:var('+c.v+')"></span><div class="rmain"><div class="rtitle">'+esc(f.name)+'</div><div class="rsub">প্রতি মাসের '+nf.format(f.day)+' তারিখ · '+c.n+(f.active?'':' · বন্ধ')+(f.sample?' · নমুনা':'')+'</div></div>'+
-        '<div class="ramt num">'+taka(f.amount)+'</div><button class="x" data-act="fx-toggle" data-id="'+f.id+'">'+(f.active?'বন্ধ করুন':'চালু করুন')+'</button>'+delBtn('fixed',f.id,f.name)+'</li>';
+      var c=catById(f.cat),comp=fxComplete(f);
+      return '<li class="row" style="flex-direction:column;align-items:stretch;gap:6px"><div style="display:flex;align-items:center;gap:12px"><span class="dot" style="background:var('+c.v+')"></span><div class="rmain"><div class="rtitle">'+esc(f.name)+'</div><div class="rsub">'+fxInfo(f)+' · '+c.n+(comp?' · শেষ':(f.active?'':' · বন্ধ'))+(f.sample?' · নমুনা':'')+'</div></div>'+
+        '<div class="ramt num">'+taka(f.amount)+'</div></div>'+fxProgress(f)+
+        '<div class="inl" style="justify-content:flex-end">'+(comp?'':'<button class="x" data-act="fx-toggle" data-id="'+f.id+'">'+(f.active?'বন্ধ করুন':'চালু করুন')+'</button>')+'<button class="x" data-act="edit-fix" data-id="'+f.id+'">সম্পাদনা</button>'+delBtn('fixed',f.id,f.name)+'</div></li>';
     }).join('')+'</ul></section>';
   }
   return h;
@@ -954,7 +1172,12 @@ function vFixed(){
 function vCal(){
   var y=mRef.y,m=mRef.m,pre=monthKey(y,m),dim=new Date(y,m+1,0).getDate(),off=(new Date(y,m,1).getDay()+1)%7,ev={};
   function add(d,k,t){(ev[d]=ev[d]||[]).push({k:k,t:t});}
-  S.fixed.forEach(function(f){if(f.active&&pre>=f.start)add(Math.min(f.day,dim),'bill',f.name+' · '+taka(f.amount));});
+  S.fixed.forEach(function(f){
+    if(!fxLive(f))return;
+    if(isWeekly(f)){
+      for(var dd=1;dd<=dim;dd++){var kk=pre+'-'+pad(dd);if(new Date(y,m,dd).getDay()===+f.wd&&kk>=(f.startD||'0000-00-00'))add(dd,'bill',f.name+' · '+taka(f.amount));}
+    }else if(pre>=f.start)add(Math.min(f.day,dim),'bill',f.name+' · '+taka(f.amount));
+  });
   var got=inMonth(S.income.filter(function(i){return i.source==='salary';}),pre);
   got.forEach(function(i){add(+i.date.slice(8,10),'got','বেতন পাওয়া গেছে · '+taka(i.amount));});
   if(S.settings.salaryDay&&!got.length)add(Math.min(S.settings.salaryDay,dim),'sal','বেতন পাওয়ার কথা');
@@ -1014,7 +1237,7 @@ function vDebts(){
   function card(d){
     var left=d.amount-d.paid,done=left<=0;
     return '<li class="row" style="flex-direction:column;align-items:stretch;gap:8px"><div style="display:flex;gap:12px;align-items:center"><div class="rmain"><div class="rtitle">'+esc(d.person)+'</div><div class="rsub">'+(d.note?esc(d.note)+' · ':'')+'মোট '+taka(d.amount)+', '+(d.kind==='owe'?'শোধ':'আদায়')+' '+taka(d.paid)+(d.sample?' · নমুনা':'')+'</div></div>'+
-      (done?'<span class="pill ok">শেষ</span>':'<div class="ramt num">'+taka(left)+'</div>')+delBtn('debts',d.id,d.person)+'</div>'+
+      (done?'<span class="pill ok">শেষ</span>':'<div class="ramt num">'+taka(left)+'</div>')+'<button class="x" data-act="edit-debt" data-id="'+d.id+'">সম্পাদনা</button>'+delBtn('debts',d.id,d.person)+'</div>'+
       (done?'':'<form class="debtPay inl" data-id="'+d.id+'" autocomplete="off"><input class="txt" name="amt" inputmode="decimal" placeholder="'+(d.kind==='owe'?'কত শোধ করলেন':'কত ফেরত পেলেন')+'" aria-label="পরিমাণ"><button class="ghost small" type="submit">যোগ করুন</button></form>')+'</li>';
   }
   if(owe.length)h+='<section class="card"><h2>আমি দেব</h2><ul class="list">'+owe.map(card).join('')+'</ul></section>';
@@ -1023,12 +1246,19 @@ function vDebts(){
   return h;
 }
 
+function reconHtml(){
+  return '<form class="card" id="recForm" autocomplete="off"><h2>নগদ মিলিয়ে নিন</h2><p class="hint">পকেটে বা অ্যাকাউন্টে আসলে কত আছে লিখুন। অ্যাপের হিসাবের সাথে ফারাক থাকলে সেটা "হিসাব মিলানো" নামে যোগ হবে। কম হলে খরচ হিসেবে, বেশি হলে আয় হিসেবে। এটা আজকের সীমা বা মাসিক লিমিটে ধরা হয় না।</p>'+
+    '<div class="two"><div class="field"><label for="rcw">কোন ওয়ালেট</label><select class="txt" id="rcw">'+WAL.map(function(w){return '<option value="'+w.id+'"'+(w.id==='cash'?' selected':'')+'>'+w.n+'</option>';}).join('')+'</select></div>'+
+    '<div class="field"><label for="rcamt">আসলে আছে (৳)</label><input class="txt" id="rcamt" inputmode="decimal" placeholder="০"></div></div>'+
+    '<div class="st" id="recOut" aria-live="polite"></div><div class="hint" id="recErr" role="alert"></div><button class="primary" type="submit">মিলিয়ে দিন</button></form>';
+}
 function vWallets(){
   var h=head('ওয়ালেট',true);
   h+='<section class="card"><h2>এখনকার ব্যালেন্স</h2><ul class="list">'+WAL.map(function(w){
     var b=walBal(w.id);
     return '<li class="row"><div class="rmain"><div class="rtitle">'+w.n+'</div></div><div class="ramt num'+(b<0?' neg':'')+'">'+taka(b)+'</div></li>';
   }).join('')+'</ul><p class="hint">আয় যোগ করলে ব্যালেন্স বাড়ে, খরচ ও সঞ্চয় দিলে কমে।</p></section>';
+  h+=reconHtml();
   h+=transferToSavingsHtml();
   h+=transferHtml();
   h+='<form class="card" id="walForm" autocomplete="off"><h2>শুরুর ব্যালেন্স</h2><p class="hint">অ্যাপ ব্যবহার শুরুর সময় কোথায় কত টাকা ছিল, সেটা লিখুন। সঞ্চয় অ্যাকাউন্টে এখানে শুধু এমন টাকা লিখুন যা পুরোনো সঞ্চয় জমার রেকর্ডে নেই।</p>'+
@@ -1060,8 +1290,11 @@ function vSec(){
      (S.settings.pin?'<p class="st pos">পিন চালু আছে।</p>':'')+
      '<div class="inl"><input class="txt" id="pinNew" type="password" inputmode="numeric" maxlength="6" placeholder="৪ থেকে ৬ সংখ্যার নতুন পিন" aria-label="নতুন পিন"><button class="primary small" type="submit">সেট করুন</button></div>'+
      '<div class="hint" id="pinMsg" role="alert"></div>'+(S.settings.pin?'<button type="button" class="ghost danger-btn" data-act="pin-remove">পিন বন্ধ করুন</button>':'')+'</form>';
+  if(isNative()&&S.settings.pin)h+='<section class="card"><h2>আঙুলের ছাপ</h2><button class="chip" data-act="bio-toggle" aria-pressed="'+!!S.settings.bio+'">আঙুলের ছাপ দিয়ে খুলুন</button><p class="hint">চালু থাকলে অ্যাপ খুলতে আঙুলের ছাপ চাইবে। ছাপ না মিললে পিন দিয়ে খোলা যাবে। ফোনের সেটিংসে আগে আপনার ছাপ যোগ করা থাকতে হবে।</p></section>';
   h+='<section class="card"><h2>ব্যাকআপ</h2><p class="hint">তথ্য শুধু এই ফোনেই থাকে। ফোন হারালে বা অ্যাপ মুছলে হিসাব চলে যায়, তাই মাঝে মাঝে ব্যাকআপ ফাইল নিজের কাছে (হোয়াটসঅ্যাপ, ইমেইল বা ড্রাইভে) রেখে দিন।</p>'+
      (S.settings.lastBackup?'<p class="st">সর্বশেষ ব্যাকআপ: '+fmtDate(new Date(S.settings.lastBackup),{day:'numeric',month:'long'})+'</p>':'<p class="st neg">এখনো ব্যাকআপ নেওয়া হয়নি।</p>')+(isNative()?'<button class="primary" data-act="backup-share">ব্যাকআপ ফাইল পাঠান</button>':'')+'<button class="ghost" data-act="backup-copy">ব্যাকআপ কপি করুন (লেখা হিসেবে)</button></section>';
+  var pvd='';try{pvd=localStorage.getItem('hk-prevday')?localStorage.getItem('hk-prevdate'):null;}catch(e){pvd=null;}
+  if(pvd!==null)h+='<section class="card"><h2>আগের দিনের কপি</h2><p class="hint">অ্যাপ নিজে প্রতিদিন একবার আগের অবস্থার একটা কপি রাখে'+(validDate(pvd)?' (এটা '+fmtDate(dateOf(pvd),{day:'numeric',month:'long'})+' তারিখের শেষ অবস্থা)':'')+'। ভুলে অনেক কিছু মুছে ফেললে বা বদলে ফেললে এখান থেকে ফিরতে পারবেন। অ্যাপ মুছলে এটাও যাবে, তাই ব্যাকআপ ফাইলও রাখুন।</p><button class="ghost" data-act="prevday-restore">আগের দিনের অবস্থায় ফিরে যান</button></section>';
   h+='<form class="card" id="restoreForm"><h2>ব্যাকআপ থেকে ফিরিয়ে আনুন</h2><label for="rfile">ব্যাকআপ ফাইল বেছে নিন</label><input class="txt" type="file" id="rfile" accept=".json,application/json,text/plain"><p class="hint">অথবা কপি করা লেখা এখানে পেস্ট করুন:</p><textarea class="ta" id="rtext" placeholder="কপি করা ব্যাকআপ এখানে পেস্ট করুন" aria-label="ব্যাকআপ"></textarea>'+
      '<div class="hint" id="restoreMsg" role="alert"></div><button class="ghost" type="submit">ফিরিয়ে আনুন</button></form>';
   h+='<section class="card"><h2>তথ্য মুছুন</h2><p class="hint">'+(storageOk?'সব আয়, খরচ ও সেটিং মুছে যাবে। আগে ব্যাকআপ নিয়ে রাখুন।':'এই ব্রাউজারে তথ্য জমা রাখা যাচ্ছে না, পাতা বন্ধ করলে হিসাব মুছে যাবে।')+'</p>'+
@@ -1155,12 +1388,39 @@ document.addEventListener('click',function(ev){
     showToast(skipCat(id)?'এই খাত এখন থেকে লিমিটে ধরা হবে না':'এই খাত এখন থেকে লিমিটে ধরা হবে');
   }
   else if(act==='all-kind'){allKind=id;render(false);}
+  else if(act==='sug'){
+    var so=sugList[+id];
+    if(so){
+      var ne0=document.getElementById('note'),ae0=document.getElementById('amt');
+      if(ne0)ne0.value=so.note;
+      if(ae0)ae0.value=String(so.amt);
+      selCat=so.cat;
+      document.querySelectorAll('[data-cat]').forEach(function(c){c.setAttribute('aria-pressed',c.getAttribute('data-cat')===selCat);});
+      var sb=document.querySelector('#expForm button.primary');if(sb)sb.focus();
+    }
+  }
+  else if(act==='repeat'){
+    var rsrc=null;S.expenses.forEach(function(x){if(String(x.id)===id)rsrc=x;});
+    if(rsrc){
+      var snapR=snapshot(),dkr=todayKey();
+      var rn={id:uid(),date:dkr,amount:rsrc.amount,cat:rsrc.cat,note:rsrc.note||'',t:Date.now(),wallet:rsrc.wallet||lastWal};
+      if(rsrc.big)rn.big=true;
+      S.expenses.push(rn);save();render(false);
+      showToast(limitToast(dkr,rsrc.cat,!!rsrc.big),'ফিরিয়ে আনুন',function(){restoreSnap(snapR);});
+    }
+  }
   else if(act==='edit'){openEdit(id);}
-  else if(act==='edit-cancel'){document.getElementById('editSheet').hidden=true;editId=null;}
+  else if(act==='edit-inc'){openEditOther('inc',id);}
+  else if(act==='edit-fix'){openEditOther('fix',id);}
+  else if(act==='edit-debt'){openEditOther('debt',id);}
+  else if(act==='edit-cancel'){document.getElementById('editSheet').hidden=true;editId=null;editKind='exp';}
   else if(act==='edit-del'){
     var snapD=snapshot();
-    S.expenses=S.expenses.filter(function(x){return String(x.id)!==editId;});
-    document.getElementById('editSheet').hidden=true;editId=null;
+    if(editKind==='inc')S.income=S.income.filter(function(x){return String(x.id)!==editId;});
+    else if(editKind==='fix')S.fixed=S.fixed.filter(function(x){return String(x.id)!==editId;});
+    else if(editKind==='debt')S.debts=S.debts.filter(function(x){return String(x.id)!==editId;});
+    else S.expenses=S.expenses.filter(function(x){return String(x.id)!==editId;});
+    document.getElementById('editSheet').hidden=true;editId=null;editKind='exp';
     save();render(false);showToast('মুছে ফেলা হয়েছে','ফিরিয়ে আনুন',function(){restoreSnap(snapD);});
   }
   else if(act==='quick'){
@@ -1193,6 +1453,10 @@ document.addEventListener('click',function(ev){
       else if(ok===false){copyText(bt2,'ব্যাকআপ কপি হয়েছে','ব্যাকআপ');}
     });
   }
+  else if(act==='prevday-restore'){
+    var pr=null;try{pr=localStorage.getItem('hk-prevday');}catch(e){}
+    if(pr){var snapP=snapshot();try{restoreSnap(pr);showToast('আগের দিনের অবস্থায় ফিরেছে','আবার আগেরটায় যান',function(){restoreSnap(snapP);});}catch(e){showToast('ফিরতে পারেনি');}}
+  }
   else if(act==='rem-toggle'){
     if(!isNative()){showToast('রিমাইন্ডার শুধু ইনস্টল করা অ্যাপে চলে');return;}
     if(S.settings.rem.on){S.settings.rem.on=false;save();render(false);syncReminders();showToast('রিমাইন্ডার বন্ধ হয়েছে');return;}
@@ -1212,7 +1476,7 @@ document.addEventListener('click',function(ev){
     }).catch(function(){showToast('সমস্যা হয়েছে');});
   }
   else if(act==='left-go'){mRef=pRef(id);view='report';openDay=null;render(true);}
-  else if(act==='fx-toggle'){S.fixed.forEach(function(f){if(f.id===id){f.active=!f.active;if(f.active){var n=new Date(),p=f.start.split('-');var cur=monthKey(n.getFullYear(),n.getMonth());if(f.start<cur)f.start=cur;}}});save();render(false);}
+  else if(act==='fx-toggle'){S.fixed.forEach(function(f){if(f.id===id){f.active=!f.active;if(f.active){var n=new Date(),p=f.start.split('-');var cur=monthKey(n.getFullYear(),n.getMonth());if(f.start<cur)f.start=cur;if(isWeekly(f))f.startD=todayKey();}}});save();render(false);}
   else if(act==='sample'){sampleData();save();render(false);}
   else if(act==='clear-sample'){clearSample();save();render(false);}
   else if(act==='alloc-limit'){
@@ -1223,7 +1487,16 @@ document.addEventListener('click',function(ev){
   else if(act==='copy-report'){copyText(reportText(),'রিপোর্ট কপি হয়েছে','রিপোর্ট');}
   else if(act==='copy-csv'){copyText(csvText(),'কপি হয়েছে, এক্সেলে পেস্ট করুন','এক্সেলের জন্য');}
   else if(act==='carry'){S.settings.carry=!S.settings.carry;save();render(false);}
-  else if(act==='pin-remove'){S.settings.pin='';save();render(false);showToast('পিন বন্ধ হয়েছে');}
+  else if(act==='bio-unlock'){bioAuth(function(good){if(good)unlockApp();else showToast('ছাপ মেলেনি, পিন দিন');});}
+  else if(act==='bio-toggle'){
+    if(S.settings.bio){S.settings.bio=false;save();render(false);showToast('আঙুলের ছাপ বন্ধ হয়েছে');return;}
+    if(!S.settings.pin){showToast('আগে পিন সেট করুন');return;}
+    bioReady(function(ok){
+      if(!ok){showToast('এই ফোনে আঙুলের ছাপ চালু নেই। ফোনের সেটিংসে ছাপ যোগ করুন।');return;}
+      bioAuth(function(good){if(good){S.settings.bio=true;save();render(false);showToast('আঙুলের ছাপ চালু হয়েছে');}else showToast('ছাপ মেলেনি, চালু হয়নি');});
+    });
+  }
+  else if(act==='pin-remove'){S.settings.bio=false;S.settings.pin='';save();render(false);showToast('পিন বন্ধ হয়েছে');}
   else if(act==='backup-copy'){var bt=JSON.stringify(exportObj());S.settings.lastBackup=Date.now();save();copyText(bt,'ব্যাকআপ কপি হয়েছে','ব্যাকআপ');}
   else if(act==='clear-all'){
     if(!confirmClear){confirmClear=true;render(false);}
@@ -1270,6 +1543,7 @@ document.addEventListener('submit',function(ev){
     else{rm.textContent='সময় বেছে নিন।';rm.style.color='var(--danger)';}
   }
   else if(id==='editForm'){
+    if(editKind!=='exp'){submitEditOther();return;}
     a=parseAmt(val('eamt'));
     if(!(a>0)){fail('editErr','সঠিক টাকার অঙ্ক লিখুন।','eamt');return;}
     var ee=null;S.expenses.forEach(function(x){if(String(x.id)===editId)ee=x;});
@@ -1289,6 +1563,16 @@ document.addEventListener('submit',function(ev){
     dk=val('stdate');if(!validDate(dk))dk=todayKey();
     S.transfers.push({id:uid(),date:dk,amount:a,from:sf,to:'savings',t:dateToT(dk)});
     save();render(false);showToast(walName(sf)+' থেকে সঞ্চয়ে '+taka(a)+' পাঠানো হয়েছে');
+  }
+  else if(id==='recForm'){
+    var rw=val('rcw'),rraw=val('rcamt').trim(),ra=parseAmt(rraw);
+    if(rraw===''||!isFinite(ra)||ra<0){fail('recErr','আসলে কত টাকা আছে লিখুন (০ হলে ০ লিখুন)।','rcamt');return;}
+    var rd=ra-walBal(rw);
+    if(Math.abs(rd)<0.5){fail('recErr','হিসাব আগে থেকেই মিলে আছে।','rcamt');return;}
+    var snapC=snapshot(),rtk=todayKey();
+    if(rd<0)S.expenses.push({id:uid(),date:rtk,amount:-rd,cat:'other',note:'হিসাব মিলানো · '+walName(rw),t:Date.now(),wallet:rw,adj:true});
+    else S.income.push({id:uid(),date:rtk,amount:rd,source:'other',note:'হিসাব মিলানো · '+walName(rw),t:Date.now(),wallet:rw,adj:true});
+    save();render(false);showToast(walName(rw)+' মিলে গেছে','ফিরিয়ে আনুন',function(){restoreSnap(snapC);});
   }
   else if(id==='trForm'){
     var tf=val('trf'),tt=val('trt');a=parseAmt(val('tramt'));
@@ -1334,13 +1618,18 @@ document.addEventListener('submit',function(ev){
     save();render(false);showToast(selSrc==='salary'?'বেতন যোগ হয়েছে। নিচে বরাদ্দের হিসাব দেখুন।':'আয় যোগ হয়েছে');
   }
   else if(id==='fixForm'){
-    var name=val('fname').trim(),day=parseInt(toEn(val('fday')),10);a=parseAmt(val('famt'));
+    var name=val('fname').trim(),fq=val('ffreq'),day=parseInt(toEn(val('fday')),10);a=parseAmt(val('famt'));
+    var ftot=parseInt(toEn(val('ftotal')),10)||0,fdn=parseInt(toEn(val('fdone')),10)||0;
     if(!name){fail('fixErr','নাম লিখুন।','fname');return;}
     if(!(a>0)){fail('fixErr','সঠিক টাকার অঙ্ক লিখুন।','famt');return;}
-    if(!(day>=1&&day<=31)){fail('fixErr','তারিখ ১ থেকে ৩১-এর মধ্যে হতে হবে।','fday');return;}
+    if(fq!=='w'&&!(day>=1&&day<=31)){fail('fixErr','মাসিক খরচের তারিখ ১ থেকে ৩১-এর মধ্যে হতে হবে।','fday');return;}
+    if(ftot<0||fdn<0||(ftot>0&&fdn>=ftot)){fail('fixErr','আগে দেওয়া কিস্তির সংখ্যা মোট কিস্তির চেয়ে কম হতে হবে।','fdone');return;}
     var n=new Date(),startM=day<n.getDate()?monthKey(n.getFullYear(),n.getMonth()+1):monthKey(n.getFullYear(),n.getMonth());
     lastWal=val('fwal')||lastWal;
-    S.fixed.push({id:uid(),name:name,amount:a,day:day,cat:val('fcat')||'other',wallet:lastWal,active:true,start:startM});
+    var fo={id:uid(),name:name,amount:a,day:day>=1?day:1,cat:val('fcat')||'other',wallet:lastWal,active:true,start:startM};
+    if(fq==='w'){fo.wd=+val('fwd');fo.startD=todayKey();}
+    if(ftot>0){fo.total=ftot;fo.done0=fdn;}
+    S.fixed.push(fo);
     save();render(false);showToast('নির্ধারিত খরচ যোগ হয়েছে');
   }
   else if(id==='goalForm'){
@@ -1423,12 +1712,57 @@ document.addEventListener('input',function(ev){
     if(box)box.innerHTML=allListHtml(monthKey(mRef.y,mRef.m));
   }
 });
+function recOut(){
+  var o=document.getElementById('recOut');if(!o)return;
+  var raw=val('rcamt').trim(),w=val('rcw');
+  if(raw===''||!isFinite(parseAmt(raw))){o.textContent='';return;}
+  var cur=walBal(w),d=parseAmt(raw)-cur;
+  o.textContent='অ্যাপে এখন '+taka(cur)+'। আপনি লিখেছেন '+taka(parseAmt(raw))+'। '+(Math.abs(d)<0.5?'হিসাব মিলে গেছে।':'ফারাক '+taka(Math.abs(d))+(d<0?' কম, খরচ হিসেবে লেখা হবে।':' বেশি, আয় হিসেবে লেখা হবে।'));
+}
+document.addEventListener('input',function(ev){
+  var t=ev.target;if(!t||!t.id)return;
+  if(t.id==='note'){
+    var box=document.getElementById('sugBox');if(!box)return;
+    box.innerHTML=sugHtml(t.value);
+    var k=t.value.trim().toLowerCase(),ex=null;
+    sugList.forEach(function(o){if(o.note.toLowerCase()===k)ex=o;});
+    if(ex){
+      selCat=ex.cat;
+      document.querySelectorAll('[data-cat]').forEach(function(c){c.setAttribute('aria-pressed',c.getAttribute('data-cat')===selCat);});
+      var ae=document.getElementById('amt');if(ae&&!ae.value.trim())ae.value=String(ex.amt);
+    }
+  }
+  else if(t.id==='rcamt')recOut();
+});
+document.addEventListener('change',function(ev){if(ev.target&&ev.target.id==='rcw')recOut();});
+function bioReady(cb){
+  if(!isNative()){cb(false);return;}
+  var B=plug('NativeBiometric');if(!B||!B.isAvailable){cb(false);return;}
+  try{B.isAvailable({useFallback:false}).then(function(r){cb(!!(r&&r.isAvailable));},function(){cb(false);});}catch(e){cb(false);}
+}
+function bioAuth(cb){
+  var B=plug('NativeBiometric');if(!B){cb(false);return;}
+  try{B.verifyIdentity({reason:'হাতখরচ খুলতে আঙুলের ছাপ দিন',title:'হাতখরচ',subtitle:'পরিচয় যাচাই',useFallback:false,maxAttempts:3}).then(function(){cb(true);},function(){cb(false);});}catch(e){cb(false);}
+}
+function unlockApp(){
+  document.getElementById('lock').hidden=true;
+  var lp=document.getElementById('lockPin');if(lp)lp.value='';
+  var le=document.getElementById('lockErr');if(le)le.textContent='';
+}
 function hashPin(p){var h=5381,s=String(p)+'|hk';for(var i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0;}return String(h);}
 var hiddenAt=0;
 function lockNow(){
   if(!S.settings.pin)return;
   document.getElementById('lock').hidden=false;
-  setTimeout(function(){document.getElementById('lockPin').focus();},50);
+  var bb=document.getElementById('lockBio');if(bb)bb.hidden=true;
+  if(S.settings.bio){
+    bioReady(function(ok){
+      if(!ok)return;
+      if(bb)bb.hidden=false;
+      bioAuth(function(good){if(good)unlockApp();});
+    });
+  }
+  setTimeout(function(){var x=document.getElementById('lockPin');if(x&&!S.settings.bio)x.focus();},50);
 }
 document.addEventListener('visibilitychange',function(){
   if(document.hidden){hiddenAt=Date.now();}
